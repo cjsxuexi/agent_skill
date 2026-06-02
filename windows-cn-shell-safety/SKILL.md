@@ -1,6 +1,13 @@
 ---
 name: windows-cn-shell-safety
-description: Use when running Python or PowerShell on Windows where commands may touch Chinese paths, Chinese filenames, or non-ASCII content. Also use after seeing `UnicodeEncodeError: 'gbk' codec ...`, `OSError: Invalid argument` on a Chinese path, garbled `[garbled filename]` paths, `Unrecognized escape sequence \U` from PowerShell `Select-String`, or before invoking `python3 scripts/...` in Chinese-content repos. Covers interpreter detection, path safety, PowerShell regex pitfalls, and manifest CSV writes.
+description: >-
+  Use when running Python or PowerShell on Windows where commands may touch
+  Chinese paths, Chinese filenames, or non-ASCII content. Also use after seeing
+  `UnicodeEncodeError: 'gbk' codec ...`, `OSError: Invalid argument` on a Chinese
+  path, garbled `[garbled filename]` paths, `Unrecognized escape sequence \U` from
+  PowerShell `Select-String`, or before invoking `python3 scripts/...` in
+  Chinese-content repos. Covers interpreter detection, path safety, PowerShell
+  regex pitfalls, and manifest CSV writes.
 ---
 
 # windows-cn-shell-safety
