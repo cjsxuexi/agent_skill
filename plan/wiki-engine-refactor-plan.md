@@ -1,6 +1,6 @@
 # wiki-refine 工程化改造方案(wiki-engine)
 
-> 状态:**草案 v1,待确认**(2026-06-04)
+> 状态:**v1.1 — 6 个开放点全部确认、已通读校对,可进入实现(A→D)**(定稿 2026-06-05;创建 2026-06-04)
 > 范围:本次实施 A→D 四阶段;E(document-systems 接入)与 F(存量治理执行)留后续会话
 > 配套讨论记录:本文档由 brainstorming + 双 Plan agent 设计稿收敛而来,所有"实测"均来自 D:\wiki 与 D:\jk_file\skills 真实文件
 
@@ -60,7 +60,7 @@
 
 | 类别 | 范围 | 规则集 |
 |---|---|---|
-| strict | 子系统/单系统 `architecture.md`、根文档 | 完整契约(§1–§10 / 根文档四区域) |
+| strict | 子系统/单系统 `architecture.md`、根文档 | 完整契约(§1–§10 / 根文档具名区域,见 §6.7) |
 | light | `_common` 文档 + `<子系统>/<topic>.md` 辅助文档 | frontmatter + 统一 `## 待确认 / 疑问` 章节 + 锚点格式 + 无臆测词 + 标识符原样;**不**施加 §1–§10 |
 | ignored | `_meta\` 等非 `_common` 的 `_*\` 目录、`issue/**`、`whole_architecture.md`、`spec/**`、`**/.review.md` | 顶层 `_*`(非 `_common`)由目录归类直接忽略;仓内路径 allowlist 写死在 common-conventions.md 的 fenced block,引擎读取;均不校验 |
 
@@ -82,7 +82,7 @@
 
 ### 约束 2 — 外科手术式字节拼接,禁止整文档重排
 
-渲染必须是**外科手术式字节拼接**:解析时给每个节点记录 `(start_offset, end_offset)`,改某节点时**只替换它那一段字节(span)**,其余字节原封不动。禁止"重新生成整个文档"式重排。`render(parse(x)) == x` 字节级成立是 B 阶段第一道门禁。否则:改一行子系统,diff 却显示整文档变了(把"概览"被顺手改成"概述"等),git diff 噪声爆炸、lint 增量(只看新引入的违规)失真。
+渲染必须是**外科手术式字节拼接**:解析时给每个节点记录 `(start_offset, end_offset)`,改某节点时**只替换它那一段字节(span)**,其余字节原封不动。禁止"重新生成整个文档"式重排。`render(parse(x)) == x` 字节级成立是 B 阶段第一道门禁。否则:改一行子系统,diff 却显示整文档变了(如把"概览"顺手改成"概述"),git diff 噪声爆炸、lint 增量(只看新引入的违规)失真。
 
 ### 约束 3 — 根文档比模板脏,只动具名区域、其余字节原样
 
@@ -135,7 +135,7 @@
 **横切规则**:
 - 一个话题可命中多场景 → 合成**一个事务**,先 `--dry-run` 自修复到干净,再真实 apply(原子:全成或全不成);
 - owner / 级别 / 全解 vs 部分解是 **agent 的语义判断**,引擎只校验结构化结果;
-- **escalation**:R1 追踪命中禁区(他子系统源码 / jar / SDK / 他仓)且确有必要 → 先完成不依赖禁区的部分,返回 `escalation_request{zones, reason}` → 主 agent 询问用户 → 同意则带 `<EXPANDED_SCOPE>` 重派,拒绝则缺口落 §10。经授权读 jar/SDK 得来的内容标注 `> 来源:经用户授权阅读 <对象>(YYYY-MM-DD)`,优先落 shared-lib 类 common 文档。
+- **escalation**:R1 追踪命中禁区(他子系统源码 / jar / SDK / 他仓)且确有必要 → 先完成不依赖禁区的部分,返回 `escalation_request{zones:[{kind, target, reason}]}`(schema 见 §7.2 示例) → 主 agent 询问用户 → 同意则带 `<EXPANDED_SCOPE>` 重派,拒绝则缺口落 §10。经授权读 jar/SDK 得来的内容标注 `> 来源:经用户授权阅读 <对象>(YYYY-MM-DD)`,优先落 shared-lib 类 common 文档。
 
 ## 5. 阶段 A — 契约文件 + 场景 playbook
 
@@ -365,6 +365,8 @@ tests/          # unittest + fixtures
 ```
 其余四种:`mermaid_node`(声明节点 `{node_id, label}`)、`protocol_row`(跨系统通信方式表行)、`aux_resource`(辅助资源 bullet)、`common_index_entry`(`## 仓内公共文档` 缺失时容忍创建该节再插入行)。
 
+> **6 种 kind 对应 5 个具名区域**:子系统清单(`subsystem_row`)/ 依赖关系图(`mermaid_node` + `mermaid_edge` 两 kind)/ 跨系统通信方式(`protocol_row`)/ 辅助资源(`aux_resource`)/ 仓内公共文档(`common_index_entry`)。这 5 区即 §3 约束3"4+1 个具名区域";其余根文档内容(拓扑层级、数据资产索引指引、文档维护说明、frontmatter、体系外漂移)`update_root` 一概不碰。
+
 ### 6.8 退出码
 
 0 成功 / 2 用法错误 / 3 事务被否决(lint 增量或硬规则)/ 4 寻址失败 / 5 耦合缺失 / 6 替换串过期 / 7 解析失败 / 8 IO / 9 源码根缺失(仅 `--require-source` 时)。`lint` 有发现仍退出 0(发现即产品),`--strict` 时有 ERROR 则退 3。区分"引擎说不"(3/5)与"调用方搭错"(2/4/6),技能侧据此决定让 LLM 改 payload 还是改调用。
@@ -505,9 +507,9 @@ fixtures:drift_subsystem(概览标题+§11+派生文件链接,仿 port-data)、c
 
 **git**:`master` 上拉特性分支 `wiki-engine`,每阶段(A/B/C/D)各自提交,门禁通过后合并。
 
-## 13. 开放点(待你确认/可优化)
+## 13. 决策确认记录(原开放点,均已定)
 
-| # | 开放点 | 当前默认 |
+| # | 议题 | 结论 |
 |---|---|---|
 | 1 | 首批**全局** common | **已定**:暂无确认的跨仓事实 → **先一律仓库级**(`level=repo`)。全局 `_common/` 结构保留但合法地近空(仅 `index.md`);引擎仍实现 `--level global` 能力,待真出现第二仓消费再 promote 上移。M5 因此默认不产出全局文档 |
 | 2 | 技能同步安装方式 | **已定**(实测):`C:\Users\admin\.claude\skills\{document-systems,wiki-refine,...}` 已是 **Junction**,直指 `D:\jk_file\skills\<skill>`。仓库即安装目录——`scripts/wiki_engine/`、新增 `references/*.md` 经 junction **自动可见、无需同步**;引擎按安装根绝对路径(MAINTAINER §13)调用即解析到仓库文件,测试也跑同一份 |
