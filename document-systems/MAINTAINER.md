@@ -8,10 +8,15 @@ Files in scope:
 
 - `references/wiki-principles.md`
 - `references/code-wiki-conventions.md`
+- `references/common-conventions.md`
+- `references/scenario-playbook.md`
 - `references/subsystem-prompt.md`
 - `references/review-prompt.md`
 - `references/discovery-prompt.md`
 - `references/templates/root-architecture.md`
+- `references/templates/common-{glossary,shared-lib,protocol,infra}.md`
+- `scripts/wiki_engine/**` (the deterministic engine + its tests)
+- `MIGRATION.md`
 - `SKILL.md`
 - `../wiki-refine/SKILL.md`
 - `../wiki-refine/references/refine-subagent-prompt.md`
@@ -28,9 +33,9 @@ After splitting or moving rules between files, the total rule set must not shrin
 - `references/code-wiki-conventions.md` must be readable on its own — do not assume the reader has read `wiki-principles.md`. Do not duplicate clauses already in `wiki-principles.md`.
 - The two files have no read-order dependency; either can be loaded first.
 
-## 3. Absolute reference paths from wiki-refine
+## 3. Install-root resolution from wiki-refine
 
-`../wiki-refine/SKILL.md` and `../wiki-refine/references/refine-subagent-prompt.md` reference `wiki-principles.md` and `code-wiki-conventions.md` only by absolute path. The skill must abort with a clear Chinese message if either file is missing at runtime.
+`../wiki-refine/SKILL.md` and `../wiki-refine/references/refine-subagent-prompt.md` reference the engine CLI and the shared contract files (`wiki-principles.md`, `code-wiki-conventions.md`, `common-conventions.md`, `scenario-playbook.md`) by an absolute path that is the **expansion of a resolved install root**, not a hardcoded literal. The install root is resolved by the probe order in Check 13. The skill must abort with a clear Chinese message if the install root cannot be resolved or a required contract file is missing at runtime.
 
 ## 4. Section-name alignment
 
@@ -86,3 +91,49 @@ Both skills read/write one shared config `%USERPROFILE%\.document-systems.json` 
 **wiki-refine `## Single mode overrides` must cover:** Phase 1.3 single context (no `子系统清单`, one target); Phase 1.4 ready-line swap; Phase 2.2 single target (skip candidate matching / `--subsystem`); Phase 2.3 single dispatch (subagent edits the single doc directly — the "subagent must not edit the root doc" constraint is inverted); Phase 2.5 skipped (empty `root_suggestions`); Phase 3.2 wrap-line swaps.
 
 **Reference prompts (unchanged by the reorg).** `subsystem-prompt.md`, `review-prompt.md`, and `refine-subagent-prompt.md` accept `<SINGLE_MODE>` and honor single mode via their own `## Single-system mode` block (edit the single doc directly, return empty `root_suggestions`, omit the parent-overview header).
+
+---
+
+## 10. Engine ↔ contract alignment (bidirectional completeness audit)
+
+The prose contract (`wiki-principles.md`, `code-wiki-conventions.md`, `common-conventions.md`, `scenario-playbook.md`, templates) is the single source of truth; the engine's lint (`scripts/wiki_engine/lint/`) is the executor. The two must be bound bidirectionally and auditable, or they drift (this is the plan's largest risk: prose and code maintained separately).
+
+**Direction A — every lint rule cites a contract clause.** Each engine rule carries its source clause in its registry entry, surfaced by `rule-catalog`. Examples: `Q10_FORMAT` → `wiki-principles §5`; `ANCHOR_NO_LINENO` → `wiki-principles §2`. Intercept: someone adds "tables must not exceed 20 rows" with no contract behind it → fail → either write it into the contract or delete the rule. **The engine may not invent constraints the contract does not state.**
+
+**Direction B — every mechanically checkable contract clause either has an engine check or is explicitly marked `LLM-only`.** What a machine can verify must have a corresponding lint; clauses that genuinely need semantic judgement are marked `LLM-only`, documenting that the absence of an engine rule is deliberate, not an oversight. Example (has a rule): code-wiki-conventions §8 「数据名源码可 grep」 → `DATA_NAME_GREP`. Example (marked `LLM-only`): wiki-principles §3 ownership "is this a cross-system contract or an implementation-detail leak?" is undecidable mechanically — the engine only flags the signal (another subsystem's identifier appears), and the verdict is left to the review LLM, so that clause is marked `LLM-only`/hybrid. Intercept: the contract adds "§5 upstreams in alphabetical order" (mechanical) but no engine rule exists and it is not marked `LLM-only` → fail. **A mechanical clause may not be written without an enforcer.**
+
+Operational meaning: **every contract change must be walked back through the engine once**, or the two eventually disagree.
+
+## 11. Section-name constants ↔ templates/contract
+
+Engine section-name constants (`scripts/wiki_engine/` literals used by `doc_kind`, `parser`, `address`, and `update_root` named regions) MUST equal the literal chapter names in the templates and contract. The Check 4 section-name alignment set is **extended** to include:
+
+- the four common templates' three-section skeleton (`## 1. 范围与级别`, the type body heading, `## 待确认 / 疑问`);
+- `references/common-conventions.md` (the four `common_type` values, the level names `repo`/`global`, the frontmatter keys);
+- the new root chapter `## 仓内公共文档` (root template ↔ engine `update_root` `common_index_entry` region);
+- the engine's table column orders for `subsystem_row` / `protocol_row` / `common_index_entry` ↔ the corresponding template table headers.
+
+Renaming any of these requires updating the engine constant and the template/contract literal together.
+
+## 12. Engine output language
+
+Engine JSON carries English `rule_id` / `code` plus a `message_zh` field. Skills display ONLY `message_zh` to the user (per Check 5: user-facing prose is Chinese, agent-facing/code identifiers English). Mechanical check: every engine finding/error object has both an English code and a `message_zh`.
+
+## 13. wiki-refine resolves the install root by probe order (no hardcoded user path)
+
+`../wiki-refine/SKILL.md` and `../wiki-refine/references/refine-subagent-prompt.md` resolve the install root in this order, taking the first that exists:
+
+1. **in-repo** — if the current repo can be located (`git rev-parse --show-toplevel` succeeds and `<repo-root>\document-systems\` exists), install root = `<repo-root>\document-systems` (friendly to codex / trae-cn, where the repo is the working dir);
+2. **Claude Code junction** — else `~/.claude/skills/document-systems` (expand `%USERPROFILE%`, never literal `admin`);
+3. **config override** — else an optional configured install root;
+4. none of the three → abort with a Chinese contract-missing message.
+
+The engine CLI and every contract file path are expansions of this resolved root. **Mechanical check: neither `SKILL.md` nor `refine-subagent-prompt.md` contains a `C:\Users\<user>\...` literal as the install root.** This refines Check 3's "absolute path" into "the absolute path that resolution produces", so codex / trae-cn and machine-swap / CI / container scenarios all work.
+
+## 14. Engine tests green before dependent skill changes ship
+
+A change to a skill that depends on the engine (wiki-refine flow, document-systems Phase E wiring) may not be declared done until `python -X utf8 -m unittest discover scripts/wiki_engine/tests` passes fully. The byte-exact `render(parse(x)) == x` round-trip must hold on every fixture (the B-gate first door).
+
+## 15. MIGRATION.md stays in sync with engine operator names / contract regions
+
+`MIGRATION.md` references engine operator names (`promote_to_common`, `move_with_reference`, `resolve_question`, `update_section`, `add_question`, `update_root`) and contract regions. Renaming an operator or a named region requires updating `MIGRATION.md` in the same change.

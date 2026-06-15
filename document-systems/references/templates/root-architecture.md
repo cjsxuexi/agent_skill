@@ -67,6 +67,13 @@ Block placeholders (multi-line, generated from Phase 2 data):
     WebSocket             | 实时推送
   Omit any row whose protocol is not present anywhere.
 
+<REPO_COMMON_INDEX_ROWS>
+  One row per repo-level common document under <DOC_ROOT>/_common/, format:
+    | [<name>](./_common/<name>.md) | 仓库级 | <common_type> | <one-sentence purpose> |
+  Detect them from <DOC_ROOT>/_common/*.md frontmatter (common_type / owns).
+  If there are no repo-level common documents yet, write a single line containing only: 无
+  (The engine's update_root common_index_entry op maintains this table after init.)
+
 <AUXILIARY_RESOURCES>
   Bullet list, one per item in discovery JSON `resources`:
     - `<name>/` — <purpose>
@@ -121,6 +128,14 @@ graph TD
 - `<子系统>/architecture.md#7-数据资产`
 
 本根文档不重复枚举，避免双向维护成本。需要跨子系统反查某张表 / topic 的使用情况时，建议在 IDE 中全局搜索表名或 topic 名。
+
+## 仓内公共文档
+
+跨子系统共享、无单一属主的事实（术语 / 共享库契约 / 公共协议 / 基础设施约定）由仓库级公共文档 `./_common/` 持有；子系统文档以锚点引用、不复制其内部细节。跨仓库或全公司级共享事实见全局 `../_common/`。
+
+| 公共文档 | 级别 | 类型 | 说明 |
+|---|---|---|---|
+<REPO_COMMON_INDEX_ROWS>
 
 ## 辅助资源
 

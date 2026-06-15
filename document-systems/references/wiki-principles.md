@@ -41,7 +41,7 @@ General principles for wiki-style knowledge documentation. Apply to any wiki pro
 
 ## 3. Ownership: a doc describes only its own object's internals
 
-**Rule**: a wiki document describes the internals of *its own object* (subsystem, module, domain unit) only. References to external objects use a markdown link with a section anchor plus a brief natural-language summary. Never write external objects' internal identifiers (class names, method names, table names, topic names) in the current doc.
+**Rule**: a wiki document describes the internals of *its own object* (subsystem, module, domain unit) only. References to external objects use a markdown link with a section anchor plus a brief natural-language summary. Never write external objects' internal identifiers (class names, method names, table names, topic names) in the current doc. A fact shared by several objects with no single natural owner is assigned to one **designated owner document**; every other document references it with a section anchor and does not copy its internal detail.
 
 **Why**: external internals belong to the other doc's ownership. Writing them here causes duplication, drift, and review-time ownership violations.
 

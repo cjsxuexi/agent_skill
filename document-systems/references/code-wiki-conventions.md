@@ -75,6 +75,8 @@ For uncertain library-internal behavior, record in §10 per wiki-principles §5.
 
 **Counter-example**: mixing user-supplied content into the body without attribution — later readers cannot tell what is code-evidenced.
 
+**Pointer**: facts written into a shared `_common/` document carry attribution by this same §3 rule. A fact learned by reading a jar/SDK under explicit user authorization is annotated `> 来源：经用户授权阅读 <对象>（YYYY-MM-DD）` and preferentially lands in a `shared-lib` common document (see `common-conventions.md`).
+
 ---
 
 ## 4. §6 业务流 sub-section structure: 处理流程 + 数据交互
