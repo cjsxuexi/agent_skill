@@ -442,8 +442,8 @@ fixtures:drift\_subsystem(概览标题+§11+派生文件链接,仿 port-data)、
     S  暂不公共化,仅在相关子系统 §10 记一条"建议公共化"
     R  拒绝
   ```
-- **`--lint`** **入口**(新):非对话模式,跑 `lint --scope`,中文汇总后退出;
-- **Single mode overrides 同步**:引擎检查两模式都做;common 目标单模式下仅全局级;2.5 仍跳过但 promote(global) 可达并走 2.5.b;`--lint` 作用于单文档。多流程内不得出现内联单模式分支(MAINTAINER §9 Shape-1)。
+- **`--lint`** **入口**(新):非对话模式,跑 `lint --path <DOC_ROOT> --recursive`,中文汇总后退出;
+- **Single mode overrides 同步**:引擎检查两模式都做;common 目标单模式下仅全局级;2.5 仍跳过但 promote(global) 可达并走 2.5.b;`--lint` 作用于单文档(`lint --path <DOC_ROOT>\architecture.md`,不 `--recursive`)。多流程内不得出现内联单模式分支(MAINTAINER §9 Shape-1)。
 
 ### 7.2 重写 `wiki-refine/references/refine-subagent-prompt.md`
 
