@@ -1,8 +1,9 @@
 # wiki-refine 工程化改造方案(wiki-engine)
 
-> 状态:**v1.2 — 在 v1.1 定稿上补 3 处工程加固(详见下行),仍可进入实现(A→D)**(修订 2026-06-15;定稿 2026-06-05;创建 2026-06-04)
+> 状态:**v1.3 — 在 v1.2 上把 §6.5 / §7.1 的 promote 示例对齐运营默认(详见下行),仍可进入实现(A→D)**(修订 2026-06-15;定稿 2026-06-05;创建 2026-06-04)
 > 范围:本次实施 A→D 四阶段;E(document-systems 接入)与 F(存量治理执行)留后续会话
 > 配套讨论记录:本文档由 brainstorming + 双 Plan agent 设计稿收敛而来,所有"实测"均来自 D:\wiki 与 D:\jk\_file\skills 真实文件
+> v1.3 修订(2026-06-15):§6.5 S4 示例 + §7.1 2.5.b 门禁样张的 `level` 由 `global` 改 `repo`(写 `<DOC_ROOT>\_common\`、前缀 `../_common/`),与 §13 决策 #1"当前一律 repo"对齐,消除"示例教 global、默认却是 repo"的歧义;§5 A1 放置阶梯补"默认级别"硬条款;global 两级路径机制降为 §6.5 注里一行。
 > v1.2 修订(2026-06-15):① §5 / §7.1 1.0.b / A6 检查 13——安装根改"探测式解析"(去 `C:\Users\admin\` 硬编码,适配 codex / trae-cn 与换机 / CI);② §6.5 步骤 2——钉死"按内容寻址句柄对 baseline 快照解析";③ §6.3——补 `q_` 临时把手与显式持久 ID(PD-LIN 式)的关系。
 
 ***
@@ -154,7 +155,7 @@
 **A1 新建** **`references/common-conventions.md`**(agent-facing 英文):
 
 - 两级语义 + 引用路径规则(决策 1);
-- **放置判定阶梯**:① 事实归单一子系统所有 → 留在该子系统文档,他处引用;② 本仓 ≥2 子系统共享且无单一属主 → 仓库级 common;③ 确有第二个仓库消费或全公司标准 → 全局 common。宁低勿高;拿不准 → 仓库级 + 记"建议全局化"待确认条目;
+- **放置判定阶梯**:① 事实归单一子系统所有 → 留在该子系统文档,他处引用;② 本仓 ≥2 子系统共享且无单一属主 → 仓库级 common;③ 确有第二个仓库消费或全公司标准 → 全局 common。宁低勿高;拿不准 → 仓库级 + 记"建议全局化"待确认条目;**默认级别**:除非命中 ③,promote 的 `level` 一律 `repo`(引擎缺省值),采用 `global` 须在 2.5.b 公共化门禁显式标级别并经用户确认(§13 决策 #1);
 - 4 类 common 文档轻量结构(各含统一尾章 `## 待确认 / 疑问`,条目格式同 wiki-principles §5 → 引擎 `questions` 可全 wiki 枚举);frontmatter:`common_type` / `level: repo|global` / `owns: <事实稳定id>`;文件名 kebab-case 英文;
 - **`_common`** **组织模型(已定)**:**4 类为轴 + 类内薄骨架 + index 导航**——
   - **薄骨架**:每份 common 文档保留 3 个固定小节(`## 1. 范围与级别` / 类型主体 / `## 待确认 / 疑问`),**骨架内正文随意写**。这层薄骨架是"查得动"的代价:统一 `待确认/疑问` 让引擎 `questions` 能把 common 未决项与子系统 §10 一起枚举;可预测小节标题让 `../../_common/x.md#锚点` 引用稳定。**不允许"完全无结构"**(否则 `questions`/锚点失效、退回自发雏形的混乱)。
@@ -325,15 +326,15 @@ tests/          # unittest + fixtures
 - 另一种 `coupling.kind=existing_anchor` + `{ "anchor": "port-data/architecture.md#7-数据资产" }`:证明结论已在某锚点、无需新写,引擎校验该锚点可解析且内容已在。
 - 中文 payload 走文件(`s1_row.md` 内容即例 1 那一行),不上命令行。
 
-**完整事务 JSON 示例(S4:promote\_to\_common)**——把 ego\_info 外部生产链路上移 global common,并把 port-data 的内联段改为引用:
+**完整事务 JSON 示例(S4:promote\_to\_common)**——把 ego\_info 外部生产链路提取到仓库级 common,并把 port-data 的内联段改为引用:
 
 ```json
 {
   "version": 1,
   "doc_root": "D:\\wiki\\fabusurfer",
-  "intent": "S4: ego_info 外部生产链路上移 global common",
+  "intent": "S4: ego_info 外部生产链路提取到仓库级 common",
   "ops": [
-    { "op": "promote_to_common", "level": "global", "type": "shared-lib",
+    { "op": "promote_to_common", "level": "repo", "type": "shared-lib",
       "common_name": "ego-info-source",
       "title_file": "payloads/ego_title.md", "body_file": "payloads/ego_body.md",
       "sources": [
@@ -346,9 +347,9 @@ tests/          # unittest + fixtures
 }
 ```
 
-- `level=global` → 写 `D:\wiki\_common\ego-info-source.md`(不存在则从 `common-shared-lib.md` 模板 scaffold);引用前缀按源文档深度算(子系统文档 → `../../_common/`)。
+- `level=repo` → 写 `<DOC_ROOT>\_common\ego-info-source.md`(即 `D:\wiki\fabusurfer\_common\ego-info-source.md`,不存在则从 `common-shared-lib.md` 模板 scaffold);引用前缀按源文档深度算(子系统文档 → `../_common/`)。
 - 每个 source 的 `replace_match_file` 须字节匹配现文,替换为 `reference_text_file` 的锚点引用;新 common 文档 + 全部被改 source 一起跑 lint 增量,任一引新违规 → 整体回滚。
-- 注:此例演示 `level=global` 的路径机制(`D:\wiki\_common\`、`../../_common/` 前缀);**运营默认见开放点 #1——当前一律** **`repo`** **级**(写 `<DOC_ROOT>\_common\`、前缀 `../_common/`)。`level` 字段照常支持 global,待出现真实跨仓消费再上移。
+- 注:此例用 `level=repo`(运营默认,见 §13 决策 #1;promote 的 `level` 缺省即 `repo`)。`level=global` 仅路径不同——写全局 `D:\wiki\_common\`、引用前缀 `../../_common/`(两级上溯);`level` 字段照常支持 global,待真实跨仓消费再传 `global` 上移。
 
 **lint 增量怎么判(承接步骤 5,以上面 S1 事务为例)**:port-data 当前**基线**已含 `STRUCT_NO_SECTION_11PLUS`(那个非法 §11)、`STRUCT_TITLE_CANONICAL`(概览,INFO)。该事务只动 §7/§10:
 
@@ -432,8 +433,8 @@ fixtures:drift\_subsystem(概览标题+§11+派生文件链接,仿 port-data)、
   ```
   公共化建议 <i>/<N>:
     事实:ego_info 由外部 AntennaServer.PushEgoInfo 上报落 Mongo,本仓多模块只读副本
-    级别:global   类型:shared-lib
-    目标公共文档:_common/ego-info-source.md(新建)
+    级别:repo   类型:shared-lib
+    目标公共文档:_common/ego-info-source.md(仓库级,新建)
     受影响子系统文档:port-data、port-ingest(内联内容将改为引用)
     证据:<grep / 源码锚点>
   请输入:
