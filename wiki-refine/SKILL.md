@@ -13,36 +13,49 @@ The main agent never reads source — it only dispatches subagents that handle t
 
 - `--subsystem=<name>` — restrict subsystem candidates to the named one (only that subsystem may be dispatched).
 - `--reconfigure` — re-ask the wiki base location (see Phase 1.0) and overwrite the saved config, then proceed.
+- `--lint` — non-dialogue mode: resolve `<DOC_ROOT>` and the install root, run the engine `lint` over the
+  whole wiki, print a Chinese summary, and exit (no refine session). See **## `--lint` mode** below.
 
-No `--force`, no progress file: every invocation starts a fresh session.
+No `--force`, no progress file: every (dialogue) invocation starts a fresh session.
 
 ## Hard Constraints (apply to main agent AND all subagents)
 
-Before any action, main agent and all subagents must read:
+`/wiki-refine` drives a deterministic engine (`scripts/wiki_engine`) that lives next to the shared
+contracts under an **install root** resolved at runtime (Phase 1.0.b) — NEVER a hardcoded
+`C:\Users\<user>\...` literal. Before any action, the main agent and all subagents read the shared
+contracts under the resolved `<安装根>\references\`:
 
-- `C:\Users\admin\.claude\skills\document-systems\references\wiki-principles.md`
-- `C:\Users\admin\.claude\skills\document-systems\references\code-wiki-conventions.md`
+- `wiki-principles.md`, `code-wiki-conventions.md` — modification constraints
+- `common-conventions.md`, `scenario-playbook.md` — common-document rules + the S1–S8 playbook
 
-If either file is missing, abort and print to the user:
+If the install root cannot be resolved, the engine is unavailable, or any contract file is missing,
+abort and print to the user:
 
 ```
-请先安装或升级 `document-systems` skill —— `/wiki-refine` 依赖其共享契约文件作为修改约束。
+请先安装或升级 `document-systems` skill —— `/wiki-refine` 依赖其确定性引擎(scripts/wiki_engine)与共享契约文件作为修改约束。
 ```
 
 You MUST NOT:
 
 - Modify any file or git state in the SOURCE repo; this skill only writes under `<DOC_ROOT>`
-- Read source under directories of subsystems not listed as targets for the current topic
-- Read jar / SDK / third-party library source code, even if locally available (code-wiki-conventions §1 / §2)
-- Let the subagent directly Edit `<DOC_ROOT>/architecture.md` — root document changes go through main agent + user confirmation only (prevents the subagent from cascading wrong edits with incomplete context)
-- Auto-cascade changes to affected subsystems' §5 — when a root-doc dependency edge changes, surface the impact to the user but do not auto-edit other subsystems
+- Have a subagent read source outside its DocKind boundary without escalation approval: a **strict**
+  target (subsystem `architecture.md`) reads only its own subsystem's source; a **light** target
+  (`_common` / ancillary doc) may read cross-subsystem within the repo but stops at jar / SDK
+  (code-wiki-conventions §1 / §2; common-conventions §9). Crossing a forbidden zone requires the
+  escalation gate (Phase 2.4.b)
+- **Bypass the engine to hand-edit a subsystem / common document** — all structural changes go
+  through `wiki_engine apply` (the subagent dry-runs then applies); the main agent never hand-`Edit`s
+  a doc the engine governs (the only exceptions are the engine-applied `update_root` and the S-path §10 fallback)
+- Auto-cascade changes to affected subsystems' §5 — when a root-doc dependency edge changes, surface
+  the impact to the user but do not auto-edit other subsystems
 - Generate derived files (`.changes.md` / `.refine-log.md` / `.questions.md`) — wiki-principles §7
 
 You MUST:
 
 - Pause and confirm with the user before proceeding when `git status` is dirty
 - Treat user-supplied knowledge as a legitimate source, but write it with attribution per code-wiki-conventions §3
-- Surface subsystem changes via `git diff` after each round (wiki-principles §7)
+- Surface subsystem changes via `git diff` after each round (wiki-principles §7); every applied change
+  is one the engine already validated (dry-run → apply)
 
 ---
 
@@ -61,6 +74,23 @@ You MUST:
    - `/wiki-refine` is still invoked from inside the SOURCE repo so the subagent can trace source; only the docs live under `<DOC_ROOT>`.
 
 The wiki git repo is expected to already exist from a prior `/document-systems` run; the 1.2 prerequisite check confirms the docs are present.
+
+### 1.0.b Resolve the install root (engine + contracts)
+
+The engine and the shared contracts live under a single **install root**, resolved at runtime by
+probing this order and taking the first that exists (MAINTAINER §13). NEVER write a `C:\Users\<user>\...`
+literal — the absolute path is the *result* of this resolution:
+
+1. **in-repo** — if `git rev-parse --show-toplevel` succeeds and `<repo-root>\document-systems\` exists,
+   `<安装根>` = `<repo-root>\document-systems` (wiki-refine and document-systems are sibling skill dirs;
+   codex / trae-cn run with the repo as the working dir and hit this first);
+2. **Claude Code junction** — else `~/.claude/skills/document-systems` (expand `%USERPROFILE%`, never literal `admin`);
+3. **config override** — else an install root named in the shared config, if present;
+4. none of the three → abort with the Chinese contract-missing message from **Hard Constraints**.
+
+Derive once and reuse: `<ENGINE_CLI>` = `<安装根>\scripts\wiki_engine\cli.py`; the contract files are
+`<安装根>\references\{wiki-principles,code-wiki-conventions,common-conventions,scenario-playbook}.md`;
+`<PLAYBOOK_PATH>` = `<安装根>\references\scenario-playbook.md`.
 
 ### 1.1 Wiki git status check
 
@@ -111,11 +141,28 @@ Check whether `<DOC_ROOT>/architecture.md` exists. If not, print and abort:
 生成基础架构文档后再运行本命令。
 ```
 
+### 1.2.b Probe the engine
+
+Confirm the deterministic engine is runnable (it does every structural change). Run, via the
+interpreter resolved per `windows-cn-shell-safety` (probe `python`, then `py -3` / `python3`):
+
+```
+python -X utf8 <ENGINE_CLI> rule-catalog
+```
+
+If it fails (non-zero exit / no JSON), abort with the **Hard Constraints** message. Also confirm
+the four contract files exist under `<安装根>\references\` (the abort set now includes
+`common-conventions.md` and `scenario-playbook.md`). Every later engine call uses
+`python -X utf8 <ENGINE_CLI> <subcommand> ...` with the same interpreter and `-X utf8`; Chinese
+payloads always travel through files, never the command line (wiki-principles / windows-cn-shell-safety).
+
 ### 1.3 Detect mode and read context
 
 **Step 0 — detect mode.** Read `<DOC_ROOT>/.progress.json`: treat the session as **single** only when its `"mode"` is explicitly `"single"`. In every other case — `"mode": "multi"`, the `"mode"` key absent (legacy file), or `.progress.json` itself absent — treat it as **multi** (matching `/document-systems`' default: an unknown/ambiguous setup is never assumed to be single). Hold `SINGLE_MODE` for the rest of the session. If mode = single, follow the flow below with the deltas in **## Single mode overrides**.
 
 **Read context (multi).** Read `<DOC_ROOT>/architecture.md`. From the `子系统清单` table extract every subsystem name + path; from the dependency graph and topology layers extract relationships. The main agent dispatches strictly from this list — do not auto-discover new subsystems.
+
+**Read common-document context.** Also read, if present, the root doc's `## 仓内公共文档` table (repo-level common docs under `<DOC_ROOT>\_common\`) and list the global `<WIKI_BASE>\_common\` directory. These common documents are valid refine targets (light contract) alongside subsystems. Hold them as `<COMMON_CONTEXT>` for dispatch.
 
 ### 1.4 Print ready message
 
@@ -145,15 +192,17 @@ Read the user message and parse:
 
 If the message is empty or just `Q` / `q`, jump to Phase 3.
 
-### 2.2 Locate impacted subsystems
+### 2.2 Locate impacted targets
 
-The main agent matches the topic against the subsystem list:
+The main agent matches the topic against the **candidate set = subsystems ∪ repo-level common docs
+∪ global common docs** (the common docs from `<COMMON_CONTEXT>`):
 
 - If `--subsystem=<name>` was given, candidates are restricted to that subsystem.
-- Otherwise the main agent identifies candidates from the topic semantics.
+- Otherwise the main agent identifies candidates from the topic semantics (a cross-system term /
+  shared-lib / protocol / infra topic may legitimately target a `_common` doc).
 - If more than 5 candidates, list them and ask the user to narrow down.
 
-Read those subsystems' `architecture.md` (absolute paths) as subagent context input. The main agent never reads source.
+Read those targets' `architecture.md` / common `.md` (absolute paths) as subagent context input. The main agent never reads source.
 
 ### 2.3 Dispatch refine subagent
 
@@ -161,26 +210,36 @@ Dispatch one general-purpose subagent with `model: sonnet`. Its prompt is `refer
 
 - `<TOPIC>` — user topic
 - `<USER_SUPPLEMENT>` — user-supplied knowledge (may be empty)
-- `<TARGET_SUBSYSTEMS>` — impacted subsystems (each with name / source absolute path / architecture.md absolute path)
+- `<TARGET_SUBSYSTEMS>` — impacted targets (each with name / DocKind strict|light / source absolute path / doc absolute path)
 - `<ROOT_DOC_PATH>` — absolute path to `<DOC_ROOT>/architecture.md`
 - `<REPO_ROOT>` — repo root absolute path
 - `<DOC_ROOT>` — absolute folder holding this repo's docs (`<WIKI_BASE>/<REPO_NAME>`)
+- `<ENGINE_CLI>` — absolute path to the engine CLI (`<安装根>\scripts\wiki_engine\cli.py`), resolved in 1.0.b
+- `<PLAYBOOK_PATH>` — absolute path to `scenario-playbook.md`
+- `<COMMON_CONTEXT>` — the repo-level + global common docs available as targets / reference owners
 - `<SINGLE_MODE>` — `true` in single mode, else `false`
 - `<USER_FEEDBACK>` — carried only when the user issued `E <feedback>` for a retry; otherwise empty
+- `<EXPANDED_SCOPE>` — present only on an escalation re-dispatch (2.4.b); the approved zones the subagent may now read
 
-The subagent edits subsystem `architecture.md` directly; it does not edit the root doc.
+The subagent does NOT hand-edit docs: it classifies the topic to S1–S8, builds a single engine
+transaction, `apply --dry-run`s it to a clean state, then `apply`s it. Root-document impact is
+returned as `update_root` payloads (not applied by the subagent). It may return an `escalation_request`
+instead of editing when it needs to read a forbidden zone.
 
 ### 2.4 Review subsystem changes
 
-After the subagent returns, run `git -C <DOC_GIT_ROOT> diff -- <DOC_REL>/` and surface the diff to the user. Print:
+After the subagent returns, if its `status` is `blocked_on_escalation`, go to **2.4.b**. Otherwise the
+applied changes are ones the engine already validated (dry-run → apply). Run
+`git -C <DOC_GIT_ROOT> diff -- <DOC_REL>/` and surface the diff to the user. Print:
 
 ```
-本轮 subagent 改动汇总：
+本轮 subagent 改动汇总（已通过引擎 dry-run 校验）：
   修改：<modified 文件列表>
   新建：<new 文件列表>
+  事务：<txn_summary>
 
 请输入：
-  A  接受改动，进入根文档建议审阅（若有）
+  A  接受改动，进入根文档 / 公共化建议审阅（若有）
   R  全部回滚（git -C <DOC_GIT_ROOT> restore -- <DOC_REL>/，回到本轮开头）
   E <反馈>  让 subagent 用反馈重新尝试同一话题
 ```
@@ -189,31 +248,83 @@ After the subagent returns, run `git -C <DOC_GIT_ROOT> diff -- <DOC_REL>/` and s
 - `R` → run `git -C <DOC_GIT_ROOT> restore -- <DOC_REL>/`; return to 2.1 without exiting the loop
 - `E <feedback>` → carry the feedback as `<USER_FEEDBACK>` and re-dispatch; return to 2.3
 
-### 2.5 Review root-doc suggestions
+### 2.4.b Escalation gate (read-scope越界请求)
 
-Read the `root_suggestions` array from the subagent's return JSON. If empty, jump to 2.6.
-
-Otherwise show each suggestion one by one:
+When the subagent returns `status: "blocked_on_escalation"` with an `escalation_request`, print the
+zone(s), reason, and expected benefit, then ask (two keys only):
 
 ```
-根文档建议 <i>/<N>：
-  位置：<target>
-  类型：<add|edit|remove>
-  新值：<new_value>
+本轮 subagent 需读取超出边界的区域才能继续：
+  区域：<kind: other_subsystem|jar_sdk|other_repo> — <target>
+  理由：<reason>
+  预期收益：<闭合哪条链路 / 哪个 §章节>
+请输入：
+  A  允许并重新追踪（扩大读取范围）
+  R  拒绝（已完成部分保留，缺口落 §10）
+```
+
+- `A` → re-dispatch the SAME topic (return to 2.3) with `<EXPANDED_SCOPE>` carrying the approved zones.
+- `R` → keep the already-applied part; the gap is logged as a §10 entry (the subagent did so, or the
+  main agent records it). Return to 2.1.
+
+### 2.5 Review root-doc updates
+
+Read the `root_updates` array from the subagent's return JSON (each item is a ready `update_root`
+payload — kind / action / fields). If empty, jump to 2.5.b.
+
+Otherwise show each one by one:
+
+```
+根文档更新 <i>/<N>：
+  kind：<subsystem_row|mermaid_node|mermaid_edge|protocol_row|aux_resource|common_index_entry>
+  内容：<行 / 边 / bullet 的可读摘要>
   证据：<evidence>
   理由：<reason>
 
 请输入：
-  A  应用此建议（main agent 直接 Edit 根文档）
+  A  应用（main agent 用引擎 apply 该 update_root payload，只动具名区域）
   S  跳过但记入对应子系统 §10（疑问留档，不丢弃）
   R  拒绝（既不应用也不留档）
 ```
 
-- `A` → main agent edits `<DOC_ROOT>/architecture.md` while preserving the template structure (子系统清单 / 依赖关系图 / 拓扑层级 / 跨系统通信方式 / 数据资产索引指引 / 辅助资源 / 文档维护说明 must all remain and stay in order). If the change affects dependency edges, also tell the user: 「本次修改可能影响 <上下游子系统列表> 的 §5；下一轮你可以让我补改」.
-- `S` → convert the suggestion into a §10 entry on the relevant subsystem doc: `- [§根文档] <reason>。已检查：<evidence>。建议核实方向：<...>`.
+- `A` → the main agent writes the single `update_root` op into a transaction JSON (with `doc_root`),
+  payloads to files, and runs `python -X utf8 <ENGINE_CLI> apply --txn <file>`. The engine touches
+  ONLY the named region (no manual `Edit`). If the change affects dependency edges, also tell the
+  user: 「本次修改可能影响 <上下游子系统列表> 的 §5；下一轮你可以让我补改」.
+- `S` → convert into a §10 entry on the relevant subsystem doc via the engine `add_question`:
+  `- [§根文档] <reason>。已检查：<evidence>。建议核实方向：<...>`.
 - `R` → no change, no §10 entry.
 
-After processing all suggestions, run `git -C <DOC_GIT_ROOT> diff -- <DOC_REL>/architecture.md` once for final confirmation.
+After processing all, run `git -C <DOC_GIT_ROOT> diff -- <DOC_REL>/architecture.md` for final confirmation.
+
+### 2.5.b Promotion gate (公共化建议)
+
+Read the `promotions` array from the subagent's return JSON (S4 candidates). If empty, jump to 2.6.
+Otherwise show each one by one:
+
+```
+公共化建议 <i>/<N>：
+  事实：<被多模块共享、无单一属主的事实>
+  级别：<repo|global>   类型：<glossary|shared-lib|protocol|infra>
+  目标公共文档：_common/<name>.md（<仓库级|全局>，<新建|已存在>）
+  受影响子系统文档：<将内联内容改为引用的文档列表>
+  证据：<grep / 源码锚点>
+
+请输入：
+  A  应用（引擎原子 promote：建/改公共文档 + 各处改为引用）
+  S  暂不公共化，仅在相关子系统 §10 记一条「建议公共化」
+  R  拒绝
+```
+
+- `A` → the main agent assembles the subagent-provided `promote_to_common` transaction and runs
+  `python -X utf8 <ENGINE_CLI> apply --txn <file>` (the engine scaffolds the common doc, rewrites each
+  source to a reference, and runs lint-delta atomically — all-or-nothing).
+- `S` → for each affected subsystem, run the engine `add_question` with a 「建议公共化」 §10 entry. (This
+  is the C-phase transitional path; D-phase keeps it as the explicit S choice — plan §13 决策 #6.)
+- `R` → no change.
+
+For a `global` promotion the level must be shown explicitly here and confirmed by the user
+(common-conventions §3 default level is `repo`).
 
 ### 2.6 Next round
 
@@ -227,7 +338,7 @@ Return to 2.1 and prompt the user for the next topic.
 
 Dispatch one general-purpose subagent with `model: opus`, using document-systems' review prompt.
 
-Prompt path: `C:\Users\admin\.claude\skills\document-systems\references\review-prompt.md`
+Prompt path: `<安装根>\references\review-prompt.md` (the install root resolved in 1.0.b — never a hardcoded `C:\Users\<user>\...` literal).
 
 Substitute `<REPO_ROOT>`, `<DOC_ROOT>`, and `<SINGLE_MODE>` and pass it through.
 
@@ -237,7 +348,7 @@ Read `<DOC_ROOT>/.review.md` and print a one-line summary to the user:
 
 ```
 ✅ wiki-refine 会话结束
-本次累计：修改 <N> 个子系统文档，新建 <M> 个文件，应用 <K> 条根文档建议
+本次累计：修改 <N> 个文档，新建 <M> 个文件，应用 <K> 条根文档更新、<P> 条公共化
 跨文档审校：<ISSUE_COUNT> 项待跟进 —— 详见 <DOC_ROOT>/.review.md
 
 查看完整变更：
@@ -251,6 +362,25 @@ Read `<DOC_ROOT>/.review.md` and print a one-line summary to the user:
 
 ---
 
+## `--lint` mode
+
+When invoked as `/wiki-refine --lint`, run a non-dialogue lint pass and exit (no refine session):
+
+1. Resolve `<DOC_ROOT>` (Phase 1.0) and the install root + engine (Phase 1.0.b / 1.2.b).
+2. Run the engine over the whole wiki:
+
+   ```
+   python -X utf8 <ENGINE_CLI> lint --path <DOC_ROOT> --recursive --source-root <REPO_ROOT>
+   ```
+
+   (single mode lints the one doc instead — see **## Single mode overrides**).
+3. Parse the JSON; print a Chinese summary grouped by rule (only `message_zh` is shown to the user),
+   noting blocking (`HARD`/`delta` ERROR) vs reported-only (`never`/`WARN`/`INFO`) findings, then exit.
+
+This shares the same `<DOC_ROOT>` / install-root resolution as the dialogue flow; it never edits docs.
+
+---
+
 ## Single mode overrides
 
 When Phase 1.3 detects `"mode": "single"`, the repo is documented as ONE `§1–§10` doc and `<DOC_ROOT>/architecture.md` IS that single doc — there is no separate root overview and no `子系统清单`. Follow the Phase 1–3 flow above with these deltas; everything not listed is unchanged.
@@ -261,20 +391,24 @@ When Phase 1.3 detects `"mode": "single"`, the repo is documented as ONE `§1–
 
 **Phase 2.2 — locate target.** There is exactly one target (the system itself); skip candidate matching and `--subsystem`, and use `<DOC_ROOT>/architecture.md` as the target.
 
-**Phase 2.3 — dispatch.** `<TARGET_SUBSYSTEMS>` is the single system (name = `<REPO_NAME>`, source = `<REPO_ROOT>`, doc = `<DOC_ROOT>/architecture.md`) and `<ROOT_DOC_PATH>` is that same file. The subagent edits the single `<DOC_ROOT>/architecture.md` directly — it is both the target and the "root", so the "subagent must not edit the root doc" constraint does not apply.
+**Phase 2.3 — dispatch.** `<TARGET_SUBSYSTEMS>` is the single system (name = `<REPO_NAME>`, DocKind strict, source = `<REPO_ROOT>`, doc = `<DOC_ROOT>/architecture.md`) and `<ROOT_DOC_PATH>` is that same file. The subagent's engine transactions target the single `<DOC_ROOT>/architecture.md` — it is both the target and the "root", so there are no separate `update_root` payloads.
 
-**Phase 2.5 — skipped.** There is no separate root doc; the subagent edits the single doc directly and returns an empty `root_suggestions`. Skip 2.5 and go to 2.6.
+**Phase 2.5 — skipped.** There is no separate root doc; the subagent returns an empty `root_updates`. Skip 2.5 and go to 2.5.b.
 
-**Phase 3.2 — wrap-up message.** Replace the `本次累计` line with `本次累计：更新单系统文档，新建 <M> 个文件`（there is no 子系统 count and no 根文档建议）, and the `跨文档审校` line with `审校：<ISSUE_COUNT> 项待跟进 —— 详见 <DOC_ROOT>/.review.md`.
+**Phase 2.5.b — promotions.** Still runs: a single-system repo can still surface cross-repo shared facts. Common targets in single mode are global level only (there are no sibling subsystems for a repo-level common); `promote_to_common(level=global)` is reachable and goes through the 2.5.b gate.
+
+**`--lint` mode — single doc.** Lint the one doc: `lint --path <DOC_ROOT>\architecture.md --doc-root <DOC_ROOT>` (no `--recursive`).
+
+**Phase 3.2 — wrap-up message.** Replace the `本次累计` line with `本次累计：更新单系统文档，新建 <M> 个文件，应用 <P> 条公共化`（there is no 子系统 count and no 根文档更新）, and the `跨文档审校` line with `审校：<ISSUE_COUNT> 项待跟进 —— 详见 <DOC_ROOT>/.review.md`.
 
 ---
 
 ## What this skill does NOT do
 
-- Active architecture scanning — does not search for new subsystems, edges, or protocols. Root-architecture errors are surfaced only as the subagent passively encounters them during topic refinement, and only via `root_suggestions` for user confirmation.
-- Direct edit of root `<DOC_ROOT>/architecture.md` by the subagent — root edits always go through main agent + user confirmation.
+- Active architecture scanning — does not search for new subsystems, edges, or protocols. Root-architecture errors are surfaced only as the subagent passively encounters them during topic refinement, and only via `root_updates` for user confirmation.
+- Hand-editing a governed doc — every structural change goes through the engine (`apply`); the main agent applies `update_root` / promotions via the engine, never a manual `Edit`.
 - Auto-cascading edits to affected subsystems' §5 — surfaces the impact to the user, but never edits other subsystems automatically.
 - Derived files (`.changes.md` / `.refine-log.md` / `.questions.md`) — wiki-principles §7.
-- jar / SDK internal source reads — code-wiki-conventions §1 / §2.
+- Reading outside the DocKind boundary without escalation — jar / SDK internals and other-subsystem source (for a strict target) require the 2.4.b escalation gate (code-wiki-conventions §1 / §2; common-conventions §9).
 
 This skill produces incremental, conversational refinements to existing architecture documentation only.

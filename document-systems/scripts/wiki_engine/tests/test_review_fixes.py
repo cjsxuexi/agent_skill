@@ -131,5 +131,45 @@ class CliContractTest(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout)["code"], "E_USAGE")
 
 
+class QidNamespaceTest(unittest.TestCase):
+    """Regression: the qid from `questions --doc-root <root>` must match the namespace
+    `apply` uses (the doc rel-to-doc_root target), or resolve_question fails E_ADDR_NOTFOUND."""
+
+    def test_questions_qid_resolves_in_apply(self):
+        d = tempfile.mkdtemp()
+        try:
+            droot = os.path.join(d, "repo")
+            os.makedirs(os.path.join(droot, "port-data"))
+            shutil.copy(_support.fixture("drift_subsystem.md"),
+                        os.path.join(droot, "port-data", "architecture.md"))
+            r = subprocess.run(
+                [sys.executable, "-X", "utf8", CLI, "questions",
+                 "--path", os.path.join(droot, "port-data", "architecture.md"),
+                 "--doc-root", droot],
+                capture_output=True, text=True, encoding="utf-8")
+            qs = json.loads(r.stdout)["questions"]
+            self.assertTrue(qs)
+            self.assertEqual(qs[0]["doc"], "port-data/architecture.md")
+            qid = qs[0]["qid"]
+
+            base = os.path.join(d, "work")
+            os.makedirs(base)
+            with open(os.path.join(base, "res.md"), "w", encoding="utf-8") as f:
+                f.write("- [§7.1 关系型数据库表] 残余：仅确认部分。已检查：entity/。建议核实方向：DDL。\n")
+            txn = {"version": 1, "doc_root": droot, "intent": "t", "ops": [
+                {"op": "resolve_question", "target": "port-data/architecture.md",
+                 "mode": "partial", "question_id": qid, "residual_file": "res.md"}]}
+            with open(os.path.join(base, "t.json"), "w", encoding="utf-8") as f:
+                json.dump(txn, f, ensure_ascii=False)
+            r2 = subprocess.run(
+                [sys.executable, "-X", "utf8", CLI, "apply",
+                 "--txn", os.path.join(base, "t.json"), "--dry-run"],
+                capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(r2.returncode, 0, r2.stdout)
+            self.assertEqual(json.loads(r2.stdout)["status"], "ok")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

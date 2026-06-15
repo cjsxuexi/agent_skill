@@ -72,10 +72,18 @@ def cmd_outline(args):
 
 
 def cmd_questions(args):
-    doc_root = args.path if os.path.isdir(args.path) else os.path.dirname(args.path)
+    # The qid namespace is the doc path RELATIVE TO doc_root — it MUST match the `target`
+    # used by `apply` (e.g. "port-data/architecture.md"), or resolve_question can't find the
+    # entry. Pass --doc-root for a single-file query; a directory --path is itself the doc_root.
+    if args.doc_root:
+        doc_root = args.doc_root
+    elif os.path.isdir(args.path):
+        doc_root = args.path
+    else:
+        doc_root = os.path.dirname(args.path)
     out = []
     for md in _iter_md(args.path, args.recursive):
-        rel = _rel_to_root(md, doc_root) if os.path.isdir(args.path) else os.path.basename(md)
+        rel = _rel_to_root(md, doc_root)
         text = io_utf8.read_text(md)
         doc = parser.parse(md, text)
         for q in questions.enumerate_questions(rel, doc):
@@ -205,6 +213,8 @@ def build_parser():
     q = sub.add_parser("questions")
     q.add_argument("--path", required=True)
     q.add_argument("--recursive", action="store_true")
+    q.add_argument("--doc-root", dest="doc_root", default=None,
+                   help="doc_root for the qid namespace (must match apply's target rel)")
     q.set_defaults(func=cmd_questions)
 
     l = sub.add_parser("lint")

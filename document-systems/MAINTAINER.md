@@ -39,7 +39,7 @@ After splitting or moving rules between files, the total rule set must not shrin
 
 ## 4. Section-name alignment
 
-Section names referenced in `refine-subagent-prompt.md`'s `root_suggestions.target` field — root-document chapters and subsystem §1–§10 — must match exactly across:
+Section names referenced in the root-document update targets (`refine-subagent-prompt.md`'s `root_updates` items / the engine's `update_root` named regions) — root-document chapters and subsystem §1–§10 — must match exactly across:
 
 - `references/subsystem-prompt.md` (Output template chapter list)
 - `references/templates/root-architecture.md` (root template chapter list)
