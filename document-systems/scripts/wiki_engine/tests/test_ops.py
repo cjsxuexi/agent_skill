@@ -258,8 +258,9 @@ class OpsTest(unittest.TestCase):
         self.assertIn("| port-foo | Java 服务 | 17099 | port-foo | port-service |", after)
         # inserted into 子系统清单, before 依赖关系图
         self.assertLess(after.index("17099"), after.index("## 依赖关系图"))
-        # frontmatter + 系统架构特点 + illegal §6 untouched
-        self.assertTrue(after.startswith("---\nwhole_architecture"))
+        # frontmatter + 系统架构特点 + illegal §6 untouched (EOL-agnostic: the engine
+        # preserves whatever line endings the fixture has on this platform)
+        self.assertTrue(after.replace("\r\n", "\n").startswith("---\nwhole_architecture"))
         self.assertIn("## 系统架构特点", after)
         self.assertIn("## 6. port-data 报表数据链路补充", after)
 

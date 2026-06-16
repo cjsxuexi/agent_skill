@@ -1,0 +1,6 @@
+# The wiki_engine is a byte-exact engine: its source and test fixtures must have
+# deterministic line endings across platforms. Pin everything under scripts/ to LF so
+# git's autocrlf never flips fixture EOLs on checkout (which would break byte-level
+# fixtures and any EOL-specific assertion). CRLF handling is still covered by the
+# in-memory CRLF round-trip test.
+* text eol=lf
