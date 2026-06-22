@@ -1,7 +1,7 @@
 """Command-line entry point (plan §6.2, §6.8).
 
 Every subcommand prints exactly one JSON object to stdout and exits with the mapped code:
-    0 ok / 2 usage / 3 rejected / 4 addr / 5 coupling / 6 stale / 7 parse / 8 io / 9 source.
+    0 ok / 2 usage / 3 rejected / 4 addr / 5 coupling / 6 stale / 7 parse / 8 io / 9 source / 10 need-domain.
 ``lint`` exits 0 even with findings (findings are the product); ``--strict`` exits 3 when
 any ERROR is present. On an EngineError, the process prints ``{code, message_zh[, detail]}``
 and exits with ``EngineError.exit_code``.
@@ -192,6 +192,12 @@ def cmd_rule_catalog(args):
     return EXIT_OK
 
 
+def cmd_resolve_domain(args):
+    from wiki_engine import registry
+    _emit(registry.resolve(args.wiki, args.repo, set_domain=args.set_domain))
+    return EXIT_OK
+
+
 # ===========================================================================
 class _JsonArgumentParser(argparse.ArgumentParser):
     """Emit a JSON usage error (and exit 2) instead of argparse's stderr text, so every
@@ -252,6 +258,12 @@ def build_parser():
 
     rc = sub.add_parser("rule-catalog")
     rc.set_defaults(func=cmd_rule_catalog)
+
+    rd = sub.add_parser("resolve-domain")
+    rd.add_argument("--repo", required=True)
+    rd.add_argument("--wiki", required=True)
+    rd.add_argument("--set", dest="set_domain", default=None)
+    rd.set_defaults(func=cmd_resolve_domain)
 
     return p
 

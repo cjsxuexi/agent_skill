@@ -129,5 +129,37 @@ class CliTest(unittest.TestCase):
             self.assertEqual(fh.read(), before)   # zero writes
 
 
+    def test_resolve_domain_no_registry(self):
+        wiki = os.path.join(self.tmp, "wiki"); os.makedirs(wiki)
+        repo = os.path.join(self.tmp, "code", "old_project", "fabusurfer")
+        code, out = _run("resolve-domain", "--repo", repo, "--wiki", wiki)
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertEqual(data["status"], "no_registry")
+        self.assertEqual(data["candidate"], "old_project")
+
+    def test_resolve_domain_unknown_exit10(self):
+        wiki = os.path.join(self.tmp, "wiki"); os.makedirs(wiki)
+        with open(os.path.join(wiki, ".wiki.json"), "w", encoding="utf-8") as fh:
+            json.dump({"domains": ["old_project"], "repos": {}}, fh)
+        repo = os.path.join(self.tmp, "code", "experiments", "foo")
+        code, out = _run("resolve-domain", "--repo", repo, "--wiki", wiki)
+        self.assertEqual(code, 10)
+        data = json.loads(out)
+        self.assertEqual(data["code"], "E_UNKNOWN_DOMAIN")
+        self.assertEqual(data["detail"]["candidate"], "experiments")
+
+    def test_resolve_domain_set_persists(self):
+        wiki = os.path.join(self.tmp, "wiki"); os.makedirs(wiki)
+        repo = os.path.join(self.tmp, "code", "x", "fms-server")
+        code, out = _run("resolve-domain", "--repo", repo, "--wiki", wiki, "--set", "fms")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["domain"], "fms")
+        with open(os.path.join(wiki, ".wiki.json"), encoding="utf-8") as fh:
+            reg = json.load(fh)
+        self.assertEqual(reg["repos"]["fms-server"], "fms")
+        self.assertIn("fms", reg["domains"])
+
+
 if __name__ == "__main__":
     unittest.main()
