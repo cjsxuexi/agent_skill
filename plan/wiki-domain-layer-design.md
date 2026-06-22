@@ -1,9 +1,11 @@
 # wiki 域分层改造设计（document-systems / wiki-refine / wiki_engine）
 
-> 状态：**设计稿 v1 — 待用户评审**（创建 2026-06-22）
-> 范围：在 `D:\wiki` 现有扁平结构之上**插入一层 domain**（`old-project` / `fms`），把两套独立架构拆成两个"相对独立、各自可当 wiki 读"的子 wiki；把现有**两级 common 扩成三级**（全局 / 域 / 仓）。
+> 状态：**设计稿 v2 — 已纳入第一轮评审反馈**（创建 2026-06-22；v2 修订 2026-06-22）
+> 范围：在 `D:\wiki` 现有扁平结构之上**插入一层 domain**（`old_project` / `fms`），把两套独立架构拆成两个"相对独立、各自可当 wiki 读"的子 wiki；把现有**两级 common 扩成三级**（全局 / 域 / 仓）。
 > 关联：本设计是 [`wiki-engine-refactor-plan.md`](./wiki-engine-refactor-plan.md) 的后续扩展——它的「决策 #1 两级 common」在此扩为三级，「决策 #7 `_` 命名空间」在此新增 domain 维度；与该方案的 Phase E（document-systems 接入）/ F（存量治理执行）相交。
 > 出处：基于对 `D:\jk_file\skills\{document-systems,wiki-refine}` 与 `D:\wiki` 真实文件的通读，brainstorming 对话收敛而来。
+>
+> **v2 修订摘要**：① 域名统一用 `old_project`（弃用 aliases 归一）；② `.wiki.json` 缺失/未知域 → **询问用户**而非静默退回，回退到 flat（不引入 `default` 域）；③ repo→domain 映射放进 `.wiki.json` 的 `repos`（避开 `.progress.json` 的鸡生蛋）；④ 域解析下沉为引擎 `resolve-domain` 子命令（已决策）；⑤ 存量迁移本次直接执行——用改造后的 skill 跑迁移、顺带验证（不再留作后续会话）。
 
 ---
 
@@ -15,7 +17,7 @@
 
 **目标**：把 `D:\wiki` 拆成两个相对独立的子 wiki——每个域能当自己的 wiki 读——同时保留一个跨域共享区。落到目录上：
 
-- `D:\wiki\old-project\<repo>\…`、`D:\wiki\fms\<repo>\…`（各仓文档下沉一层）
+- `D:\wiki\old_project\<repo>\…`、`D:\wiki\fms\<repo>\…`（各仓文档下沉一层）
 - 每个域一个**域级内部 common**：`D:\wiki\<domain>\_common\`
 - 一个**跨域全局 common**：`D:\wiki\_common\`（默认近空，沿用现有 M5 哲学）
 
@@ -38,17 +40,20 @@
 
 ---
 
-## 3. 已锁定决策（对话中用户已确认）
+## 3. 已锁定决策（两轮评审，用户已确认）
 
 | # | 决策 | 内容 |
 |---|---|---|
-| D1 | 域分层 | 在 `<WIKI_BASE>` 与 `<REPO_NAME>` 之间插入 `<DOMAIN>`：`DOC_ROOT = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>`。当前两域：`old-project`、`fms` |
-| D2 | 域判定 | **混合**：父文件夹名自动推断（`basename(dirname(REPO_ROOT))`）作默认提案 + 一份随 wiki 走的 **domain 白名单**当事实源/护栏 + 未知父目录则一次性询问、落 `.progress.json`。父文件夹**不**单独够用——理由见 §5.2 |
+| D1 | 域分层 | 在 `<WIKI_BASE>` 与 `<REPO_NAME>` 之间插入 `<DOMAIN>`：`DOC_ROOT = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>`。当前两域：`old_project`、`fms` |
+| D2 | 域判定 | **混合**：父文件夹名自动推断（`basename(dirname(REPO_ROOT))`）作默认提案 + `.wiki.json` 的 **domain 白名单**当事实源/护栏 + 未知父目录则**一次性询问**。父文件夹不单独够用——理由见 §5.2 |
 | D3 | common 命名 | 三层全用 `_common`，保持引擎约定（不改成裸 `common`） |
 | D4 | common 层数 | 三级：①仓内 `_common` → ②**域内 `_common`（新）** → ③全局 `_common`；放置阶梯从 3 档变 4 档 |
 | D5 | 域落地页 | 每域 = 一张**薄 `index.md`**（不是 `architecture.md`、不走 §1–§10 强契约）：只列本域已生成文档的仓（仓名/一句话/链接）+ 链到域 `_common`。机械扫描生成、随仓增量增长 |
 | D6 | 顶层 | 选 **B**：不做顶层聚合页；`D:\wiki\` 顶层就是 `<domain>/` 目录 + `_meta/` + 全局 `_common/`。每域当自己的 wiki 读即可 |
-| D7 | 输出位置 | 本设计文档放 `D:\jk_file\skills\plan\`（跟着被改的 skill，不进产品仓） |
+| D7 | 域名拼写 | wiki 侧与源码侧**统一用 `old_project`（下划线）**，不做 aliases 归一——既无歧义，也少一层抽象 |
+| D8 | 缺配置行为 | `.wiki.json` 缺失或推断域不在白名单 → **询问用户**（选/建域 vs 本仓 flat），**不静默退回、也不造 `default` 域**（flat 才是诚实的"无域"态） |
+| D9 | 解析下沉 | 域解析做成引擎 `resolve-domain` 子命令，两 skill 调用它；交互式提问留在 skill 侧，引擎保持确定性 |
+| D10 | 迁移时机 | 本次**先改 skill+引擎，改完直接用新 skill 跑存量迁移**，顺带验证改造效果（不留作后续会话） |
 
 ---
 
@@ -58,13 +63,13 @@
 
 ```
 D:\wiki\
-  .wiki.json                    # 新增：域注册表（committed，随 wiki 的 git 走）
+  .wiki.json                    # 新增：域注册表（domains 白名单 + repos→domain 映射；committed，随 wiki git）
   _common\                      # 全局：跨域共享（默认近空）
     index.md
   _meta\                        # 引擎忽略的自由区（不变）
-  old-project\
+  old_project\
     index.md                    # 新增：域落地页（薄索引）
-    _common\                    # 新增：域级 common（old-project 各仓共享）
+    _common\                    # 新增：域级 common（old_project 各仓共享）
     fabusurfer\
       _common\                  # 仓级 common（不变）
       architecture.md           # 仓系统总览（§1–§10 strict，内容不变）
@@ -115,38 +120,45 @@ D:\wiki\
 ```
 REPO_ROOT  = git rev-parse --show-toplevel（同前）
 REPO_NAME  = basename(REPO_ROOT)（同前）
-DOMAIN     = 见 §5.2 解析
-DOC_ROOT   = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>      ← 插入 <DOMAIN>
+DOMAIN     = 见 §5.2 解析（可能为 flat=无域）
+DOC_ROOT   = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>      ← 插入 <DOMAIN>；flat 时退回 <WIKI_BASE>/<REPO_NAME>
 DOC_GIT_ROOT = <WIKI_BASE>（不变）
-DOC_REL    = <DOMAIN>/<REPO_NAME>                  ← 插入 <DOMAIN>
+DOC_REL    = <DOMAIN>/<REPO_NAME>                  ← 插入 <DOMAIN>；flat 时退回 <REPO_NAME>
 ```
 
-两处必须**镜像同改**（MAINTAINER §8：解析规则一处改、另一处必须跟）。所有 `git -C <DOC_GIT_ROOT> … -- <DOC_REL>/` 因 `DOC_REL` 已含域而自动正确。`.gitignore` 行 `<DOC_REL>/.review.md`、tracked `<DOC_REL>/.progress.json` 同理随 `DOC_REL` 走。
+两处必须**镜像同改**（MAINTAINER §8：解析规则一处改、另一处必须跟），因已下沉为引擎 `resolve-domain`（§5.2/D9），两 skill 实际调同一子命令、天然不漂移。所有 `git -C <DOC_GIT_ROOT> … -- <DOC_REL>/` 因 `DOC_REL` 已含域而自动正确。
 
-**向后兼容**：`.wiki.json` 缺失或域解析为空 → 退回旧规则 `DOC_ROOT = <WIKI_BASE>/<REPO_NAME>`（扁平/legacy），保证未迁移仓与单域用户照常工作。
+### 5.2 域解析 + 注册表（新增，下沉引擎）
 
-### 5.2 域解析 + 注册表（新增）
-
-**注册表**：`<WIKI_BASE>\.wiki.json`，committed（随 wiki git）。顶层点文件被 classifier 的 `.`-前缀规则天然忽略（`doc_kind.classify` parts[0] 以 `.` 开头 → IGNORED），不会被误判为业务仓。
+**注册表**：`<WIKI_BASE>\.wiki.json`，committed（随 wiki git）。顶层点文件被 classifier 的 `.`-前缀规则天然忽略（`doc_kind.classify` parts[0] 以 `.` 开头 → IGNORED），不会被误判为业务仓。它同时持有 **domain 白名单**与 **repo→domain 映射**：
 
 ```json
 {
-  "domains": ["old-project", "fms"],
-  "aliases": { "old_project": "old-project" }
+  "domains": ["old_project", "fms"],
+  "repos": { "fabusurfer": "old_project", "fms-server": "fms" }
 }
 ```
 
-`%USERPROFILE%\.document-systems.json` 维持只管 `wiki_base`（机器级），不放域信息——"有哪些域"是 wiki 的属性、该随 wiki 走（这是把它放进注册表而非用户配置的根本理由）。
+> 为什么 repo→domain 放这里、不放仓的 `.progress.json`：`.progress.json` 位于 `<DOC_ROOT>` 之下，而 `<DOC_ROOT>` 本身要先知道 domain 才能定位——鸡生蛋。`.wiki.json` 在 `WIKI_BASE` 这个唯一已知位置，无此循环。`%USERPROFILE%\.document-systems.json` 维持只管 `wiki_base`（机器级）。`repos` 里值为 `null` 表示该仓显式 flat。
 
-**解析算法**（Phase 1.0，两 skill 共用，建议抽进引擎 `cli.py resolve-domain --repo <ROOT> --wiki <BASE>` 一个子命令，避免两 skill prose 漂移——见 §10 Q5）：
+**引擎子命令**（D9，确定性、不交互）：
 
-1. 读 `<WIKI_BASE>\.wiki.json`。缺失 → 域 = 空 → 走 5.1 的 legacy 扁平退化（并提示可 `--init-domains` 初始化）。
-2. **该仓 `.progress.json` 已记 `"domain"` → 直接用它**（持久优先于推断：源码目录将来再重排，wiki 域也不静默漂移——正是这次记忆迁移踩过的坑）。
-3. 否则 candidate = `aliases[ basename(dirname(REPO_ROOT)) ]`（无别名则原值）。
-4. candidate ∈ `domains` → `DOMAIN = candidate`，写入该仓 `.progress.json` 的 `"domain"`。
-5. candidate ∉ `domains` → **不静默造域**，`AskUserQuestion` 让用户：选一个已有域 / 把 candidate 注册为新域（追加进 `.wiki.json`）/ 退回扁平。选择落 `.progress.json`（之后免问）。
+```
+python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> [--set <domain> | --set-flat]
+```
 
-**新增 flag**：`/document-systems --init-domains`（写/改 `.wiki.json`）、`--reconfigure` 顺带可改域归属。
+- 无 `--set`：读 `.wiki.json`。① 文件缺失 → 输出 `{"status":"no_registry"}`。② `repos[REPO_NAME]` 命中 → 输出该 domain（或 flat）。③ 否则 candidate = `basename(dirname(REPO_ROOT))`；candidate ∈ `domains` → 输出并写回 `repos`。④ 否则输出 `{"status":"unknown","candidate":"<x>","domains":[...]}`。
+- 带 `--set <domain>` / `--set-flat`：把 `repos[REPO_NAME]` 落库（必要时把新域追加进 `domains`），输出已解析值。
+
+**skill 侧 Phase 1.0 编排**（交互留在 skill）：
+
+1. 调 `resolve-domain`（无 `--set`）。
+2. 命中 domain/flat → 直接用，定 `DOC_ROOT`。
+3. `status=no_registry` → `AskUserQuestion`「未发现域配置，是否启用域分层？」：是 → 问本仓属哪个域（或新建域名），`--set <domain>`（引擎顺手建 `.wiki.json`）；否 → 本仓 `--set-flat`，走扁平。
+4. `status=unknown`（父目录 `<candidate>` 不在白名单）→ `AskUserQuestion`：把 `<candidate>` 注册为新域 / 选一个已有域 / 本仓 flat → 对应 `--set`。
+5. 新增 flag `/document-systems --init-domains`（仅建/改 `.wiki.json`）。
+
+**向后兼容**：flat 解析（无注册表且用户选否、或 `repos[x]=null`）→ `DOC_ROOT = <WIKI_BASE>/<REPO_NAME>`，未迁移仓与单域用户照常工作；扁平仓与域内仓可在同一 `D:\wiki` 共存。
 
 ### 5.3 三级 common：契约 + 引擎
 
@@ -159,39 +171,39 @@ DOC_REL    = <DOMAIN>/<REPO_NAME>                  ← 插入 <DOMAIN>
 
 - **形态**：`<WIKI_BASE>\<domain>\index.md`，薄——每行 `仓名 / 一句话 / 链接 ./<repo>/architecture.md`，外加一段链到 `./_common/`。**不复述内容、不读源码、不做跨仓分析**。是 common-conventions §6"唯一派生索引"carve-out 从"仅全局"到"也含域级"的显式扩展（仍受同样薄约束，故不违反 wiki-principles §7）。
 - **一句话来源**：扫 `<domain>\*\architecture.md`，取其 H1 标题 + 首个非空摘要行（机械、可重生、无漂移）。
-- **触发**：① `/document-systems`（multi 模式、DOMAIN 已解析）跑完某仓后，作为廉价收尾**自动重刷**该域 index；② 新 flag `/document-systems --domain-index[=<domain>]` 按需独立重建。
+- **触发**：① `/document-systems`（DOMAIN 已解析、非 flat）跑完某仓后，作为廉价收尾**自动重刷**该域 index；② 新 flag `/document-systems --domain-index[=<domain>]` 按需独立重建。
 - **引擎算子**：新增 `update_domain_index`（类比全局 `_common/index.md` 维护），由引擎原子写、lint 校验薄约束。
-- **写边界放宽（须显式）**：两 SKILL 的硬约束现为"只写 `<DOC_ROOT>` 与 wiki `.gitignore`"。域 index 在 `<DOC_ROOT>` 的**父层** `<WIKI_BASE>\<domain>\`，故约束措辞要扩成"只写 `<DOC_ROOT>` + 引擎维护的 `<WIKI_BASE>\<domain>\index.md` + （`--init-domains` 时）`<WIKI_BASE>\.wiki.json`"。这与现有全局 `_common\index.md` 本就坐在任何仓 `DOC_ROOT` 之外是同一性质，只是首次让 `/document-systems` 触达 `DOC_ROOT` 之外——必须在两 SKILL 与 MAINTAINER §7 同步写明，不能默许。
+- **写边界放宽（须显式）**：两 SKILL 的硬约束现为"只写 `<DOC_ROOT>` 与 wiki `.gitignore`"。域 index 在 `<DOC_ROOT>` 的**父层** `<WIKI_BASE>\<domain>\`，`.wiki.json` 在 `<WIKI_BASE>`，故约束措辞要扩成"只写 `<DOC_ROOT>` + 引擎维护的 `<WIKI_BASE>\<domain>\index.md` + `<WIKI_BASE>\.wiki.json`"。这与现有全局 `_common\index.md` 本就坐在任何仓 `DOC_ROOT` 之外是同一性质，只是首次让 `/document-systems` 触达 `DOC_ROOT` 之外——必须在两 SKILL 与 MAINTAINER §7 同步写明，不能默许。
 
 ### 5.5 模板与根文档样板
 
 - **`references/templates/root-architecture.md`**：`## 仓内公共文档` 段里"全局 `../_common/`"措辞改为三级版（仓 `./_common/`、域 `../_common/`、全局 `../../_common/`）。因 skill 每次都用**当前模板重写** `architecture.md`（SKILL "Rewrite … using the CURRENT prompts/templates"），存量 2 处样板在下次生成/迁移时自动刷新。
-- **MAINTAINER.md**：§7（路径解析）补 `<DOMAIN>` 层与 `.wiki.json`；§11 章节名常量集补 `index.md` 域索引列；§15 算子名补 `update_domain_index`；新增一条检查"域注册表存在性与 legacy 退化"。
+- **MAINTAINER.md**：§7（路径解析）补 `<DOMAIN>` 层、`.wiki.json`、写边界放宽；§11 章节名常量集补 `index.md` 域索引列；§15 算子名补 `update_domain_index`；新增一条检查"域注册表存在性与 flat 退化"。
 
 ---
 
-## 6. 存量迁移方案（D:\wiki 扁平 → 两域）
+## 6. 存量迁移方案（D:\wiki 扁平 → 两域，本次执行）
 
-实测（F8）：**0 个 `](../../)` 链接、仓内链接全相对**，故迁移近乎纯 `git mv`。建议在一次受控会话里、逐步带用户确认、尽量走引擎：
+按 D10：先落 §5 的 skill+引擎改造，再**用改造后的 skill 跑迁移**、顺带验证。实测（F8）：**0 个 `](../../)` 链接、仓内链接全相对**，故迁移近乎纯 `git mv`。逐步、带用户确认、尽量走引擎：
 
-1. **建注册表**：写 `<WIKI_BASE>\.wiki.json`（domains + aliases）。
-2. **建域目录**：`old-project\`、`fms\`。
-3. **整目录搬动（保历史）**：`git -C D:\wiki mv fabusurfer old-project/fabusurfer`、`charge-manage-platform`、`antenna-server-rpc`、`common-lib` → `old-project/`；`fms-server` → `fms/`。仓内相对链接全不破。
+1. **建注册表**：`/document-systems --init-domains` 写 `<WIKI_BASE>\.wiki.json`（`domains: ["old_project","fms"]`）。
+2. **建域目录**：`old_project\`、`fms\`。
+3. **整目录搬动（保历史）**：`git -C D:\wiki mv fabusurfer old_project/fabusurfer`、`charge-manage-platform`、`antenna-server-rpc`、`common-lib` → `old_project/`；`fms-server` → `fms/`。仓内相对链接全不破。
 4. **清理空目录**：删空的 `D:\wiki\common`（裸名、被 classifier 误当业务仓）。
-5. **修唯一深度敏感处**：`antenna-server-rpc/architecture.md`、`common-lib/architecture.md` 的根样板"全局 `../_common/`" → `../../_common/`（+ 新增域级 `../_common/` 一句）。本质等价于对这两仓跑一次 `/document-systems --step=root` 用新模板重生成。
-6. **各仓 `.progress.json` 记 `"domain"`**：固化归属（避免再推断漂移）。
-7. **生成域索引**：对 `old-project`、`fms` 各跑 `--domain-index`。
-8. **回归**：`/wiki-refine --lint` 全 wiki 跑通；`git -C D:\wiki diff` 人工过一遍再 commit。
+5. **修唯一深度敏感处**：对 `antenna-server-rpc`、`common-lib` 各跑一次 `/document-systems --step=root`——用新模板重生成根文档，"全局 `../_common/`" 自动变 `../../_common/` 并补域级 `../_common/` 一句。
+6. **写回 repo→domain 映射**：`resolve-domain --set` 把 5 个仓写进 `.wiki.json` 的 `repos`（固化归属，避免再推断漂移）。
+7. **生成域索引**：对 `old_project`、`fms` 各跑 `--domain-index`。
+8. **回归验证**：`/wiki-refine --lint` 全 wiki 跑通；`git -C D:\wiki diff` 人工过一遍再 commit wiki 仓。这一步同时验证了 §5 改造的真实效果。
 
-> 注：本步骤对应 wiki-engine-refactor-plan 的 **Phase F（存量治理执行）**，性质是"未来会话、逐步、带确认"。域迁移可与 F 的 M1–M5 合并到同一治理窗口。
+> 注：仅迁现存 5 个 wiki 目录。`cloud-platform-web` / `antenna-server` / `charge-manage-platform-scripts` 等尚无 wiki，将来首次跑 `/document-systems` 时由域解析自动归位，无需在此处理。
 
 ---
 
 ## 7. 向后兼容与边界
 
 - **single 模式**：`DOC_ROOT/architecture.md` 仍是那一份；只是 `DOC_ROOT` 多了域前缀。域解析、域 index 同样适用（域 index 把单系统仓也列一行）。两 skill 的 `## Single mode overrides` 块按 MAINTAINER §9 同步。
-- **legacy 扁平仓 / 无域仓**：`.wiki.json` 缺失或 candidate 不入白名单且用户选"退回扁平" → 走旧 `DOC_ROOT = <WIKI_BASE>/<REPO_NAME>`。新旧可共存于同一 `D:\wiki`（顶层既可有域目录，也可有未迁移的裸仓目录）。
-- **不在域文件夹下的仓**（如临时 clone 到 `D:\experiments\foo`）：父文件夹推断会得 `experiments`，不在白名单 → 触发一次性询问，**杜绝静默造垃圾域**（§5.2 步骤 5）。
+- **flat / 未迁移仓**：`.wiki.json` 缺失且用户选否、或 `repos[x]=null` → 走旧 `DOC_ROOT = <WIKI_BASE>/<REPO_NAME>`。新旧可共存于同一 `D:\wiki`（顶层既可有域目录，也可有未迁移的裸仓目录）。
+- **不在域文件夹下的仓**（如临时 clone 到 `D:\experiments\foo`）：父文件夹推断得 `experiments`，不在白名单 → 触发一次性询问（§5.2 步骤 4），**杜绝静默造垃圾域**。
 - **引擎测试**：任何依赖引擎的 skill 改动，未过 `unittest discover scripts/wiki_engine/tests` 不算完成（MAINTAINER §14）；`render(parse(x))==x` 字节级 round-trip 必须保持。
 
 ---
@@ -201,29 +213,27 @@ DOC_REL    = <DOMAIN>/<REPO_NAME>                  ← 插入 <DOMAIN>
 | 风险 | 说明 | 缓解 |
 |---|---|---|
 | 契约↔引擎漂移 | 加 `domain` 档要同时改 prose 契约与引擎 lint，二者分开维护易脱节（plan 最大风险） | MAINTAINER §10 双向审计：每条契约改动走回引擎一次；加 `level: domain` 的 lint 或显式标 LLM-only |
-| 两 skill 路径规则不同步 | §5.1 改动若只改一个 skill，`/wiki-refine` 会找不到 `/document-systems` 写的 `DOC_ROOT` | MAINTAINER §8 镜像检查；建议把域解析下沉为引擎 `resolve-domain` 子命令，两 skill 共用 |
+| `.wiki.json` 成新单点 | 域名单与 repo 映射都在此一文件，丢了则域归属未知 | 它 committed、随 wiki git 走、有历史可回滚；缺失时退化为 flat + 询问，不崩 |
 | 域 index 退化成派生漂移文件 | 若写厚了（复述内容）就违反 wiki-principles §7 | 硬约束薄结构（仓名/一句话/链接）+ 引擎 lint 卡死；只机械抽取、可重生 |
 | 域边界一开始划不准 | 用户已点明：域内容多、起初难准确划分 | D5 的薄索引设计：从不声称完整划分，只反映"已文档化的仓"、随之增长；跨仓深度走 `_common`/refine 增量沉淀 |
-| 别名/归一歧义 | 代码目录 `old_project`（下划线）vs 域名 `old-project`（连字符） | `.wiki.json aliases` 显式归一；`.progress.json` 固化最终域名 |
+| 迁移即验证耦合 | D10 用迁移当验证，若改造有 bug 会在真 wiki 上暴露 | 迁移前引擎单测全绿；`git mv` + `git diff` 人工门禁；wiki 本是 git 仓，可整体回滚 |
 
 ---
 
-## 9. 实现清单（供 writing-plans 拆解）
+## 9. 实现清单（供 writing-plans 拆解；顺序＝先改后跑）
 
-1. 引擎：`cli.py` 加 `resolve-domain`、`update-domain-index` 子命令；`ops/__init__.py` 加 `level=domain` 与三档深度；`doc_kind.py` 域识别（注册表驱动）；`lint/rules.py` 加 `level: domain` 与域索引薄约束校验；补测试（`tests/`：域路径解析、域 common 深度、域 index 生成、legacy 退化）。
+1. 引擎：`cli.py` 加 `resolve-domain`、`update-domain-index` 子命令；`ops/__init__.py` 加 `level=domain` 与三档深度；`doc_kind.py` 域识别（注册表驱动）；`lint/rules.py` 加 `level: domain` 与域索引薄约束校验；补测试（`tests/`：域路径解析、域 common 深度、域 index 生成、flat 退化、`.wiki.json` repos 读写）。
 2. 契约：`common-conventions.md` §1/§2/§3/§7 四处；`templates/root-architecture.md` 样板措辞。
-3. `document-systems/SKILL.md`：Phase 1.0 域解析 + 路径派生；`--init-domains` / `--domain-index` flag；Phase 6 收尾自动刷域 index；`## Single mode overrides` 同步。
-4. `wiki-refine/SKILL.md`：Phase 1.0 镜像域解析；2.5.b 公共化门禁支持 `level=domain`；`<COMMON_CONTEXT>` 纳入域 `_common`。
-5. `MAINTAINER.md`：§7/§11/§15 + 新检查；`MIGRATION.md`：把"域迁移"并入 Phase F（M0：建注册表 + git mv + 域 index）。
-6. 存量迁移（§6，独立受控会话执行）。
+3. `document-systems/SKILL.md`：Phase 1.0 调 `resolve-domain` + 路径派生 + 询问编排；`--init-domains` / `--domain-index` flag；Phase 6 收尾自动刷域 index；写边界放宽；`## Single mode overrides` 同步。
+4. `wiki-refine/SKILL.md`：Phase 1.0 镜像（调同一 `resolve-domain`）；2.5.b 公共化门禁支持 `level=domain`；`<COMMON_CONTEXT>` 纳入域 `_common`。
+5. `MAINTAINER.md` §7/§11/§15 + 新检查；`MIGRATION.md` 把"域迁移"并入（M0：建注册表 + git mv + 域 index）。
+6. **跑改造后的 skill 执行 §6 存量迁移**（即验证）。
 7. 全程 `unittest` 绿 + `--lint` 全 wiki 通过。
 
 ---
 
-## 10. 待确认（评审问题）
+## 10. 第二轮评审已确认 / 剩余开放项
 
-1. **域名拼写**：注册表/目录用连字符 `old-project` / `fms`，源码目录用 `old_project`（靠 `aliases` 归一），可否？还是 wiki 侧也想用 `old_project`？
-2. **`cloud-platform-web` / `antenna-server` / `charge-manage-platform-scripts`**：这几个仓也归 `old-project` 域吧？（其中 scripts 的实际位置上次还没确认。）
-3. **迁移时机**：§6 存量迁移是这次就执行，还是只先落"skill+引擎改造"、迁移留到单独的治理会话（对齐 plan 的 Phase F）？
-4. **`common-lib` 归属**：确认它是 `old-project` 域内的一个普通业务仓（不是跨域共享）——你之前已把它列进 old_project，这里据此处理。
-5. **是否现在就把域解析下沉成引擎 `resolve-domain` 子命令**（强烈建议，消两 skill 漂移），还是两 skill 各写 prose？
+**已确认**（本轮反馈并入，见 v2 摘要 + D7–D10）：域名 `old_project`、缺配置询问而非静默（flat 优先于 `default`）、repo 映射入 `.wiki.json`、`resolve-domain` 下沉引擎、迁移本次执行并自验。`common-lib` 按用户归类为 `old_project` 域内普通业务仓（非跨域共享）。
+
+**剩余开放项**：暂无阻断性问题。实现期可能微调的点：① `resolve-domain` 的 `status=unknown` 询问，是否允许"当场新建域名"还是只能从既有 `domains` 里选（建议允许新建，但新建即追加进白名单需用户二次确认）；② 域 index"一句话"抽取规则的具体取法（H1 + 首段 vs 取根文档某固定 frontmatter 字段）——实现时定。
