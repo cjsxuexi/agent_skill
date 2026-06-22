@@ -102,6 +102,7 @@ class ResolveTest(unittest.TestCase):
             registry.resolve(self.wiki, self._repo("experiments", "foo"))
         self.assertEqual(cm.exception.detail["candidate"], "experiments")
         self.assertEqual(cm.exception.detail["domains"], ["old_project"])
+        self.assertEqual(cm.exception.detail["repo"], "foo")
 
     def test_set_creates_registry_and_appends_domain(self):
         res = registry.resolve(self.wiki, self._repo("x", "newrepo"), set_domain="newdom")
