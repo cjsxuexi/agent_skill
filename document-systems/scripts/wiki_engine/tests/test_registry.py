@@ -83,10 +83,12 @@ class ResolveTest(unittest.TestCase):
         self.assertEqual(res["candidate"], "old_project")
 
     def test_repos_hit(self):
+        # 故意：repos 命中即返回，不查 domains（whitelist 是事实源）
         self._write({"domains": ["fms"], "repos": {"fabusurfer": "old_project"}})
         res = registry.resolve(self.wiki, self._repo("anything", "fabusurfer"))
         self.assertEqual(res, {"status": "resolved", "repo": "fabusurfer",
                                "domain": "old_project", "source": "repos"})
+        self.assertEqual(registry.load_registry(self.wiki)["domains"], ["fms"])
 
     def test_parent_resolves_and_persists(self):
         self._write({"domains": ["old_project"], "repos": {}})
