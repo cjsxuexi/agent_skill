@@ -43,9 +43,11 @@ You MUST NOT:
   (`_common` / ancillary doc) may read cross-subsystem within the repo but stops at jar / SDK
   (code-wiki-conventions §1 / §2; common-conventions §9). Crossing a forbidden zone requires the
   escalation gate (Phase 2.4.b)
-- **Bypass the engine to hand-edit a subsystem / common document** — all structural changes go
-  through `wiki_engine apply` (the subagent dry-runs then applies); the main agent never hand-`Edit`s
-  a doc the engine governs (the only exceptions are the engine-applied `update_root` and the S-path §10 fallback)
+- **Bypass the engine to hand-edit any engine-governed document** (subsystem / `_common` / root
+  `architecture.md`) — every structural change goes through `wiki_engine apply`, never a manual
+  `Edit`. Both the subagent and the main agent act only through the engine: the subagent applies the
+  topic transaction; the main agent applies the writes it owns at the review gates (`update_root`,
+  promotions, §10 entries). There is no hand-edit exception.
 - Auto-cascade changes to affected subsystems' §5 — when a root-doc dependency edge changes, surface
   the impact to the user but do not auto-edit other subsystems
 - Generate derived files (`.changes.md` / `.refine-log.md` / `.questions.md`) — wiki-principles §7

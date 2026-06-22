@@ -95,4 +95,4 @@ If a stubborn `UnicodeEncodeError: 'gbk' codec ...` still surfaces (rare — usu
 
 ## Reference
 
-Original incident log: `D:\code\fabusurfer\document\skill_suggest.md`.
+Original incident log: `D:\code\fabusurfer\document\skill_suggest.md` *(removed ~2026-06 — fabusurfer's `document/` dir was deleted from the repo; the file no longer exists at any path. The rules in this skill are now the source of truth.)*
