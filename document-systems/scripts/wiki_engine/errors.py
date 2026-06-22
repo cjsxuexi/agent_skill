@@ -10,6 +10,7 @@ Exit codes:
     7  parse failure
     8  IO failure
     9  source root missing (only under --require-source)
+    10 domain resolution needs user input (E_UNKNOWN_DOMAIN)
 
 ``lint`` itself exits 0 even with findings (findings are the product); under
 ``--strict`` it exits 3 when any ERROR finding is present.
@@ -24,6 +25,7 @@ EXIT_MATCH_STALE = 6
 EXIT_PARSE = 7
 EXIT_IO = 8
 EXIT_NO_SOURCE = 9
+EXIT_NEED_DOMAIN = 10
 
 
 class EngineError(Exception):
@@ -100,3 +102,8 @@ class SourceRootMissing(EngineError):
 class RootEdgeDangling(EngineError):
     code = "E_ROOT_EDGE_DANGLING"
     exit_code = EXIT_REJECTED
+
+
+class UnknownDomain(EngineError):
+    code = "E_UNKNOWN_DOMAIN"
+    exit_code = EXIT_NEED_DOMAIN
