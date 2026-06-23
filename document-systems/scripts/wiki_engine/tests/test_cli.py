@@ -184,6 +184,21 @@ class CliTest(unittest.TestCase):
         with open(data["created"], encoding="utf-8") as fh:
             self.assertIn("level: global", fh.read())
 
+    def test_update_domain_index(self):
+        wiki = os.path.join(self.tmp, "wiki")
+        repo = os.path.join(wiki, "old_project", "fabusurfer")
+        os.makedirs(repo)
+        with open(os.path.join(repo, "architecture.md"), "w", encoding="utf-8") as fh:
+            fh.write("# fabusurfer\n\n云控核心。\n")
+        code, out = _run("update-domain-index", "--wiki", wiki, "--domain", "old_project")
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        idx = data["index"].replace("\\", "/")
+        self.assertTrue(idx.endswith("old_project/index.md"), idx)
+        with open(data["index"], encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("[fabusurfer](./fabusurfer/architecture.md)", content)
+
 
 if __name__ == "__main__":
     unittest.main()

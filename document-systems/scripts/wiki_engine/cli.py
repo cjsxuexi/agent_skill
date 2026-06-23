@@ -204,6 +204,14 @@ def cmd_resolve_domain(args):
     return EXIT_OK
 
 
+def cmd_update_domain_index(args):
+    from wiki_engine import domain_index
+    path = domain_index.write_index(args.wiki, args.domain)
+    _emit({"status": "ok", "domain": args.domain, "index": path,
+           "message_zh": "已生成域索引：{}".format(path)})
+    return EXIT_OK
+
+
 # ===========================================================================
 class _JsonArgumentParser(argparse.ArgumentParser):
     """Emit a JSON usage error (and exit 2) instead of argparse's stderr text, so every
@@ -271,6 +279,11 @@ def build_parser():
     rd.add_argument("--wiki", required=True)
     rd.add_argument("--set", dest="set_domain", default=None)
     rd.set_defaults(func=cmd_resolve_domain)
+
+    udi = sub.add_parser("update-domain-index")
+    udi.add_argument("--wiki", required=True)
+    udi.add_argument("--domain", required=True)
+    udi.set_defaults(func=cmd_update_domain_index)
 
     return p
 
