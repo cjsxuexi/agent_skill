@@ -379,12 +379,18 @@ def _root_mermaid_edge(txn, doc, op, rel, res):
     res.add_edit(rel, Edit(close_start, close_start, line))
 
 
+_COMMON_LINK_PREFIX = {"repo": "./_common/", "domain": "../_common/", "global": "../../_common/"}
+_COMMON_LEVEL_ZH = {"repo": "仓库级", "domain": "域级", "global": "全局"}
+
+
 def _root_common_index_entry(txn, doc, op, rel, res):
     name = op["name"]
-    level_zh = op.get("级别", "仓库级")
+    level = op.get("level", "repo")
+    prefix = _COMMON_LINK_PREFIX.get(level, "./_common/")
+    level_zh = op.get("级别") or _COMMON_LEVEL_ZH.get(level, level)
     ctype = op.get("类型", "")
     desc = op.get("说明", "")
-    row_cells = ["[{}](./_common/{}.md)".format(name, name), level_zh, ctype, desc]
+    row_cells = ["[{}]({}{}.md)".format(name, prefix, name), level_zh, ctype, desc]
     sec = doc.section_by_title("仓内公共文档")
     if sec is not None:
         _append_table_row(doc, sec, row_cells, rel, res)
@@ -393,7 +399,8 @@ def _root_common_index_entry(txn, doc, op, rel, res):
     aux = _region_section(doc, "辅助资源")
     block = (
         "## 仓内公共文档\n\n"
-        "跨子系统共享、无单一属主的事实由仓库级公共文档 `./_common/` 持有；"
+        "跨层级共享、无单一属主的事实由相应级别的 `_common/` 持有"
+        "（仓内 `./_common/`、域内 `../_common/`、全局 `../../_common/`）；"
         "子系统文档以锚点引用、不复制其内部细节。\n\n"
         "| 公共文档 | 级别 | 类型 | 说明 |\n"
         "|---|---|---|---|\n"

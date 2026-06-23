@@ -320,6 +320,26 @@ class OpsTest(unittest.TestCase):
         # created right before 辅助资源
         self.assertLess(after.index("## 仓内公共文档"), after.index("## 辅助资源"))
 
+    def test_update_root_common_index_domain_link(self):
+        txn = self._root_txn()
+        op = {"op": "update_root", "target": "architecture.md", "kind": "common_index_entry",
+              "action": "add", "name": "coord-terms", "level": "domain",
+              "类型": "glossary", "说明": "坐标/航向术语"}
+        res = ops.op_update_root(txn, op, 0)
+        rel, before, after = _apply(res, txn)
+        self.assertIn("[coord-terms](../_common/coord-terms.md)", after)
+        self.assertIn("域级", after)
+
+    def test_update_root_common_index_global_link(self):
+        txn = self._root_txn()
+        op = {"op": "update_root", "target": "architecture.md", "kind": "common_index_entry",
+              "action": "add", "name": "company-std", "level": "global",
+              "类型": "infra", "说明": "全公司约定"}
+        res = ops.op_update_root(txn, op, 0)
+        rel, before, after = _apply(res, txn)
+        self.assertIn("[company-std](../../_common/company-std.md)", after)
+        self.assertIn("全局", after)
+
     def test_update_root_protocol_and_aux(self):
         txn = self._root_txn()
         op = {"op": "update_root", "target": "architecture.md", "kind": "protocol_row",
