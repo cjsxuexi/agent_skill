@@ -28,25 +28,84 @@ def _repo_dirs(domain_dir):
     return out
 
 
-def _summary(doc):
-    """(H1 title or None, first plain-prose line or "") of an architecture.md doc."""
-    h1 = next((h for h in doc.headings if h.level == 1), None)
-    title = h1.text if h1 else None
-    after = h1.line_end if h1 else doc.frontmatter.end
-    one_line = ""
+_DIGEST_CAP = 6
+
+
+def _subsystem_names(doc):
+    """First-column names of the 子系统清单 table in a generated 系统总览 scaffold.
+
+    Returns the name list, ``[]`` if the heading exists but carries no table, or
+    ``None`` when there is no 子系统清单 heading at all — i.e. a single-module root
+    doc, whose 说明 should come from its first prose line instead."""
+    head = next((h for h in doc.headings if "子系统清单" in h.text), None)
+    if head is None:
+        return None
+    later = [h.line_start for h in doc.headings if h.line_start >= head.line_end]
+    end = min(later) if later else len(doc.text)
+    tables = parser.tables_in(doc.text, head.line_end, end)
+    if not tables:
+        return []
+    t = tables[0]
+    rows = [(s, e) for (s, e) in parser._line_spans(doc.text)
+            if t.start <= s < t.rows_end]
+    out = []
+    for s, e in rows[2:]:  # skip the header row and the |---| delimiter
+        cells = parser.split_row(parser._line_content(doc.text, s, e))
+        first = cells[0] if cells else ""
+        if first and first != "—":
+            out.append(first)
+    return out
+
+
+def _subsystem_digest(names):
+    """`N 个子系统：a、b、c…` (first _DIGEST_CAP names; trailing `…` when more remain)."""
+    n = len(names)
+    if n == 0:
+        return ""
+    shown = "、".join(names[:_DIGEST_CAP])
+    if n > _DIGEST_CAP:
+        return "{} 个子系统：{}…".format(n, shown)
+    return "{} 个子系统：{}".format(n, shown)
+
+
+def _first_prose(text, lo, hi):
+    """First plain-prose line in [lo, hi): skips headings, blockquotes, table rows and
+    fenced-code bodies. Returns '' if there is none."""
     in_fence = False
-    for s, e in parser._line_spans(doc.text):
-        if s < after:
+    for s, e in parser._line_spans(text):
+        if s < lo:
             continue
-        c = parser._line_content(doc.text, s, e).strip()
+        if s >= hi:
+            break
+        c = parser._line_content(text, s, e).strip()
         if c.startswith("```") or c.startswith("~~~"):
             in_fence = not in_fence
             continue
         if in_fence or not c or c[0] in "#>|":
             continue
-        one_line = c
-        break
-    return title, one_line
+        return c
+    return ""
+
+
+def _summary(doc):
+    """(H1 title or None, one-line 说明) of an architecture.md doc.
+
+    Preference order:
+    1. an authored intro paragraph in the preamble — i.e. before the first ``##``
+       section — as carried by refined multi-subsystem roots like fms-server;
+    2. else, for a bare 系统总览 scaffold, a digest of the 子系统清单 (`N 个子系统：…`);
+    3. else the first prose line anywhere under the H1, for a single-module root doc
+       whose intro lives under ``## 概述``."""
+    h1 = next((h for h in doc.headings if h.level == 1), None)
+    title = h1.text if h1 else None
+    after = h1.line_end if h1 else doc.frontmatter.end
+    intro = _first_prose(doc.text, after, doc.preamble_end)
+    if intro:
+        return title, intro
+    names = _subsystem_names(doc)
+    if names is not None:
+        return title, _subsystem_digest(names)
+    return title, _first_prose(doc.text, after, len(doc.text))
 
 
 def _cell(s):
