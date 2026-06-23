@@ -69,5 +69,20 @@ class DomainIndexTest(unittest.TestCase):
         self.assertNotIn("title: x", out)  # frontmatter 不当摘要
 
 
+    def test_summary_skips_fenced_mermaid(self):
+        # real multi-subsystem root architecture.md shape: H1, blockquote, heading,
+        # table, mermaid fence, THEN the real prose one-liner.
+        self._repo("multi",
+                   "# multi 系统总览\n\n"
+                   "> 由 /document-systems 生成\n\n"
+                   "## 子系统清单\n\n| 子系统 | 路径 |\n|---|---|\n| a | a |\n\n"
+                   "## 依赖关系图\n\n```mermaid\ngraph TD\n  a --> b\n```\n\n"
+                   "multi 是多子系统仓的真实摘要句。\n")
+        out = domain_index.build_index(self.tmp, "old_project")
+        self.assertIn("multi 是多子系统仓的真实摘要句。", out)
+        self.assertNotIn("graph TD", out)
+        self.assertNotIn("a --> b", out)
+
+
 if __name__ == "__main__":
     unittest.main()

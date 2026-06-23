@@ -34,13 +34,15 @@ def _summary(doc):
     title = h1.text if h1 else None
     after = h1.line_end if h1 else doc.frontmatter.end
     one_line = ""
+    in_fence = False
     for s, e in parser._line_spans(doc.text):
         if s < after:
             continue
         c = parser._line_content(doc.text, s, e).strip()
-        if not c:
+        if c.startswith("```") or c.startswith("~~~"):
+            in_fence = not in_fence
             continue
-        if c[0] in "#>|" or c.startswith("```") or c.startswith("~~~"):
+        if in_fence or not c or c[0] in "#>|":
             continue
         one_line = c
         break
