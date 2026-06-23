@@ -208,7 +208,7 @@ def op_promote_to_common(txn, op, idx):
         d = src["target"].replace("\\", "/").split("/")[0]
         if d not in src_dirs:
             src_dirs.append(d)
-    level_zh = "仓库级" if level == "repo" else "全局"
+    level_zh = {"repo": "仓库级", "domain": "域级", "global": "全局"}.get(level, level)
     scope_body = "{}公共文档，被 {} 等子系统引用其共享事实。".format(
         level_zh, "、".join(src_dirs) if src_dirs else "本仓多个子系统")
 
@@ -232,16 +232,23 @@ def op_promote_to_common(txn, op, idx):
 
 
 def _common_target_path(txn, level, common_name):
-    """repo -> <doc_root>/_common/<name>.md ; global -> <wiki_base>/_common/<name>.md
-    where wiki_base = dirname(doc_root). Returns (abspath, rel_display)."""
+    """Three-level common (doc_root = <wiki_base>/<domain>/<repo>):
+      repo   -> <doc_root>/_common/<name>.md            (rel ./_common/  from root doc)
+      domain -> <wiki_base>/<domain>/_common/<name>.md  (rel ../_common/  from root doc)
+      global -> <wiki_base>/_common/<name>.md           (rel ../../_common/ from root doc)
+    Returns (abspath, rel_display)."""
     fname = "{}.md".format(common_name)
+    doc_root = os.path.normpath(txn.doc_root)
     if level == "global":
-        wiki_base = os.path.dirname(os.path.normpath(txn.doc_root))
-        abspath = os.path.normpath(os.path.join(wiki_base, "_common", fname))
+        base = os.path.dirname(os.path.dirname(doc_root))
+        rel_display = "../../_common/{}".format(fname)
+    elif level == "domain":
+        base = os.path.dirname(doc_root)
         rel_display = "../_common/{}".format(fname)
-    else:
-        abspath = os.path.normpath(os.path.join(txn.doc_root, "_common", fname))
+    else:  # repo
+        base = doc_root
         rel_display = "_common/{}".format(fname)
+    abspath = os.path.normpath(os.path.join(base, "_common", fname))
     return abspath, rel_display
 
 

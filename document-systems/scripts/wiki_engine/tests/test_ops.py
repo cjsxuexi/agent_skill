@@ -226,6 +226,21 @@ class OpsTest(unittest.TestCase):
         self.assertIn("ego-info-source § 范围与级别", after)
         self.assertNotIn("- 关系型数据库表（R/W）：`dws_vessel_job` R", after)
 
+    def test_promote_to_common_domain_path(self):
+        tf = self._payload("t.md", "域级术语")
+        bf = self._payload("b.md", "| `x` | y | z |")
+        op = {"op": "promote_to_common", "level": "domain", "type": "glossary",
+              "common_name": "domain-terms", "title_file": tf, "body_file": bf,
+              "sources": []}
+        res = ops.op_promote_to_common(self.txn, op, 0)
+        abspath, rel_display, content = res.new_files[0]
+        # domain -> dirname(doc_root)/_common
+        domain_dir = os.path.dirname(os.path.normpath(self.tmp))
+        self.assertEqual(os.path.normpath(abspath),
+                         os.path.normpath(os.path.join(domain_dir, "_common", "domain-terms.md")))
+        self.assertEqual(rel_display, "../_common/domain-terms.md")
+        self.assertIn("level: domain", content)
+
     def test_promote_to_common_global_path(self):
         tf = self._payload("t.md", "全局术语")
         bf = self._payload("b.md", "| `x` | y | z |")
@@ -234,11 +249,11 @@ class OpsTest(unittest.TestCase):
               "sources": []}
         res = ops.op_promote_to_common(self.txn, op, 0)
         abspath, rel_display, content = res.new_files[0]
-        # global -> dirname(doc_root)/_common
-        wiki_base = os.path.dirname(os.path.normpath(self.tmp))
+        # global -> dirname(dirname(doc_root))/_common  (域层把 global 顶深一级)
+        wiki_base = os.path.dirname(os.path.dirname(os.path.normpath(self.tmp)))
         self.assertEqual(os.path.normpath(abspath),
                          os.path.normpath(os.path.join(wiki_base, "_common", "global-terms.md")))
-        self.assertEqual(rel_display, "../_common/global-terms.md")
+        self.assertEqual(rel_display, "../../_common/global-terms.md")
         self.assertIn("level: global", content)
 
     # --- update_root -------------------------------------------------------
