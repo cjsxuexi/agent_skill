@@ -60,6 +60,14 @@ class DomainIndexTest(unittest.TestCase):
         with open(path, encoding="utf-8") as fh:
             self.assertIn("old_project 域索引", fh.read())
 
+    def test_summary_skips_frontmatter(self):
+        self._repo("withfm",
+                   "---\ntitle: x\nstatus: draft\n---\n# withfm 标题\n\nwithfm 的摘要句。\n")
+        out = domain_index.build_index(self.tmp, "old_project")
+        self.assertIn("[withfm 标题](./withfm/architecture.md)", out)
+        self.assertIn("withfm 的摘要句。", out)
+        self.assertNotIn("title: x", out)  # frontmatter 不当摘要
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -65,7 +65,7 @@ def _render(domain, rows):
     ]
     for repo, title, one_line in rows:
         link = "[{}](./{}/architecture.md)".format(_cell(title), repo)
-        lines.append("| {} | {} | {} |".format(repo, _cell(one_line) or "—", link))
+        lines.append("| {} | {} | {} |".format(_cell(repo), _cell(one_line) or "—", link))
     lines += [
         "",
         "## 域级公共文档",
