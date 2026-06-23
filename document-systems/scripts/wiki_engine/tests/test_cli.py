@@ -181,6 +181,8 @@ class CliTest(unittest.TestCase):
         data = json.loads(out)
         created = os.path.normpath(data["created"])
         self.assertEqual(created, os.path.normpath(os.path.join(wiki, "_common", "company-terms.md")))
+        with open(data["created"], encoding="utf-8") as fh:
+            self.assertIn("level: global", fh.read())
 
 
 if __name__ == "__main__":

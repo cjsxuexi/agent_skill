@@ -269,8 +269,7 @@ class TxnPromoteTest(TxnBase):
         # global _common (dirname(dirname(doc_root))/_common) stays inside self.tmp.
         doc_root = os.path.join(self.tmp, "d", "r")
         os.makedirs(os.path.join(doc_root, "port-data"), exist_ok=True)
-        import shutil as _shutil
-        _shutil.copy(os.path.join(self.fix, "drift_subsystem.md"),
+        shutil.copy(os.path.join(self.fix, "drift_subsystem.md"),
                      os.path.join(doc_root, "port-data", "architecture.md"))
         path = os.path.join(doc_root, "port-data", "architecture.md")
         ops = self._promote_ops("global")

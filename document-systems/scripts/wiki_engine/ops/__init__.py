@@ -236,7 +236,9 @@ def _common_target_path(txn, level, common_name):
       repo   -> <doc_root>/_common/<name>.md            (rel ./_common/  from root doc)
       domain -> <wiki_base>/<domain>/_common/<name>.md  (rel ../_common/  from root doc)
       global -> <wiki_base>/_common/<name>.md           (rel ../../_common/ from root doc)
-    Returns (abspath, rel_display)."""
+    Returns (abspath, rel_display).
+    Callers without a real doc_root (e.g. cli.cmd_init_common) must synthesize a
+    doc_root at the matching nesting depth so these dirname() levels land right."""
     fname = "{}.md".format(common_name)
     doc_root = os.path.normpath(txn.doc_root)
     if level == "global":
