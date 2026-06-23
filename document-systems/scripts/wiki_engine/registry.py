@@ -10,7 +10,7 @@ import json
 import os
 
 from . import io_utf8
-from .errors import UnknownDomain
+from .errors import UnknownDomain, ParseError
 
 REGISTRY_NAME = ".wiki.json"
 
@@ -24,7 +24,11 @@ def load_registry(wiki_base):
     raw = io_utf8.read_text_or_none(registry_path(wiki_base))
     if raw is None:
         return None
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ParseError("`.wiki.json` 不是合法 JSON：{}".format(exc),
+                         detail={"path": registry_path(wiki_base)})
     data.setdefault("domains", [])
     data.setdefault("repos", {})
     return data

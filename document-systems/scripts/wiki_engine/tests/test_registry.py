@@ -57,6 +57,15 @@ class RegistryIOTest(unittest.TestCase):
         self.assertEqual(registry.parent_candidate(self._repo("old_project", "fabusurfer")),
                          "old_project")
 
+    def test_load_malformed_json_raises_parse_error(self):
+        from wiki_engine.errors import ParseError
+        with open(os.path.join(self.wiki, ".wiki.json"), "w", encoding="utf-8") as fh:
+            fh.write("{ this is not json ")
+        with self.assertRaises(ParseError) as cm:
+            registry.load_registry(self.wiki)
+        self.assertEqual(cm.exception.exit_code, 7)
+        self.assertEqual(cm.exception.code, "E_PARSE")
+
 
 from wiki_engine.errors import UnknownDomain
 
