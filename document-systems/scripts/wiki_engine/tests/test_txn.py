@@ -238,7 +238,9 @@ class TxnPromoteTest(TxnBase):
         bf = self._payload("body.md", "ego_info 由外部 AntennaServer 上报落 Mongo，本仓只读副本。")
         old = "- 关系型数据库表（R/W）：`dws_vessel_job` R"
         mf = self._payload("old.md", old)
-        prefix = "../_common" if level == "repo" else "../../_common"
+        # repo: dirname(doc_root)/_common → "../_common" from port-data/architecture.md
+        # global: dirname(dirname(doc_root))/_common → "../../../_common" from port-data/architecture.md
+        prefix = "../_common" if level == "repo" else "../../../_common"
         ref = self._payload("ref.md",
                             "- 见 [ego-info-source § 范围与级别]({}/ego-info-source.md#1-范围与级别)".format(prefix))
         return [{"op": "promote_to_common", "level": level, "type": "shared-lib",
@@ -263,21 +265,23 @@ class TxnPromoteTest(TxnBase):
         self.assertNotIn("- 关系型数据库表（R/W）：`dws_vessel_job` R", out)
 
     def test_promote_global_scaffolds(self):
-        path = self._copy("drift_subsystem.md", "port-data/architecture.md")
+        # Use a doc_root nested two levels inside self.tmp so that
+        # global _common (dirname(dirname(doc_root))/_common) stays inside self.tmp.
+        doc_root = os.path.join(self.tmp, "d", "r")
+        os.makedirs(os.path.join(doc_root, "port-data"), exist_ok=True)
+        import shutil as _shutil
+        _shutil.copy(os.path.join(self.fix, "drift_subsystem.md"),
+                     os.path.join(doc_root, "port-data", "architecture.md"))
+        path = os.path.join(doc_root, "port-data", "architecture.md")
         ops = self._promote_ops("global")
-        result = self._txn(ops).run(dry_run=False)
+        txn = Transaction(doc_root=doc_root, source_root=None,
+                          base_dir=self.tmp, ops_json=ops)
+        result = txn.run(dry_run=False)
         self.assertEqual(result["status"], "ok")
-        wiki_base = os.path.dirname(os.path.normpath(self.tmp))
-        common = os.path.join(wiki_base, "_common", "ego-info-source.md")
-        try:
-            self.assertTrue(os.path.exists(common))
-            self.assertIn("level: global", _text(common))
-        finally:
-            if os.path.exists(common):
-                os.remove(common)
-            cdir = os.path.dirname(common)
-            if os.path.isdir(cdir) and not os.listdir(cdir):
-                os.rmdir(cdir)
+        # global _common lands at dirname(dirname(doc_root))/_common = self.tmp/_common
+        common = os.path.join(self.tmp, "_common", "ego-info-source.md")
+        self.assertTrue(os.path.exists(common))
+        self.assertIn("level: global", _text(common))
 
 
 class TxnUpdateRootTest(TxnBase):

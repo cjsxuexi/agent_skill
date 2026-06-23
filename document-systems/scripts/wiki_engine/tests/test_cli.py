@@ -160,6 +160,28 @@ class CliTest(unittest.TestCase):
         self.assertEqual(reg["repos"]["fms-server"], "fms")
         self.assertIn("fms", reg["domains"])
 
+    def test_init_common_domain(self):
+        wiki = os.path.join(self.tmp, "wiki")
+        os.makedirs(os.path.join(wiki, "old_project", "fabusurfer"))
+        code, out = _run("init-common", "--level", "domain", "--type", "glossary",
+                         "--name", "shared-terms", "--wiki-base", wiki, "--domain", "old_project")
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        created = data["created"].replace("\\", "/")
+        self.assertTrue(created.endswith("old_project/_common/shared-terms.md"), created)
+        with open(data["created"], encoding="utf-8") as fh:
+            self.assertIn("level: domain", fh.read())
+
+    def test_init_common_global_under_wiki_base(self):
+        wiki = os.path.join(self.tmp, "wiki")
+        os.makedirs(wiki)
+        code, out = _run("init-common", "--level", "global", "--type", "glossary",
+                         "--name", "company-terms", "--wiki-base", wiki)
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        created = os.path.normpath(data["created"])
+        self.assertEqual(created, os.path.normpath(os.path.join(wiki, "_common", "company-terms.md")))
+
 
 if __name__ == "__main__":
     unittest.main()

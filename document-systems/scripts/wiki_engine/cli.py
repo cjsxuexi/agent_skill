@@ -148,7 +148,13 @@ def cmd_init_common(args):
     if args.level == "global":
         if not args.wiki_base:
             raise UsageError("global 级别需 --wiki-base", code="E_USAGE")
-        doc_root = os.path.join(args.wiki_base, "_placeholder")  # dirname(doc_root)==wiki_base
+        # dirname(dirname(doc_root)) 须等于 wiki_base（三级 _common_target_path）
+        doc_root = os.path.join(args.wiki_base, "_d", "_placeholder")
+    elif args.level == "domain":
+        if not (args.wiki_base and args.domain):
+            raise UsageError("domain 级别需 --wiki-base 与 --domain", code="E_USAGE")
+        # dirname(doc_root) 须等于 <wiki_base>/<domain>
+        doc_root = os.path.join(args.wiki_base, args.domain, "_placeholder")
     elif not doc_root:
         raise UsageError("repo 级别需 --doc-root", code="E_USAGE")
 
@@ -159,7 +165,7 @@ def cmd_init_common(args):
     if not os.path.exists(tpl_path):
         raise UsageError("找不到模板 common-{}.md".format(args.type), code="E_USAGE")
     tpl = ops_mod._strip_leading_comment(io_utf8.read_text(tpl_path))
-    level_zh = "仓库级" if args.level == "repo" else "全局"
+    level_zh = {"repo": "仓库级", "domain": "域级", "global": "全局"}.get(args.level, args.level)
     content = (tpl.replace("<LEVEL>", args.level)
                   .replace("<OWNS>", args.name)
                   .replace("<TITLE>", args.name)
@@ -241,11 +247,12 @@ def build_parser():
     a.set_defaults(func=cmd_apply)
 
     ic = sub.add_parser("init-common")
-    ic.add_argument("--level", required=True, choices=["repo", "global"])
+    ic.add_argument("--level", required=True, choices=["repo", "domain", "global"])
     ic.add_argument("--name", required=True)
     ic.add_argument("--type", required=True, choices=["glossary", "shared-lib", "protocol", "infra"])
     ic.add_argument("--doc-root", dest="doc_root", default=None)
     ic.add_argument("--wiki-base", dest="wiki_base", default=None)
+    ic.add_argument("--domain", dest="domain", default=None)
     ic.add_argument("--install-root", dest="install_root", default=None)
     ic.set_defaults(func=cmd_init_common)
 
