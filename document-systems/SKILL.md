@@ -15,6 +15,8 @@ Generates and refreshes Chinese architecture documentation for every subsystem i
 - `--no-discovery` — remove `discovery` from an explicit step list such as `--step=all`; invalid with `--force`.
 - `--reconfigure` — re-ask the wiki base location (see Phase 1.0) and overwrite the saved config, then proceed.
 - `--single` — document the current folder as ONE system (single-system mode): produce a single `§1–§10` document at `<DOC_ROOT>/architecture.md`, skipping Discovery, the root 系统总览, and per-subsystem subdirs. Set at initialization and recorded in `.progress.json`; later default runs reuse it. Without this flag the mode is multi-subsystem (current behavior). See **Mode** below.
+- `--init-domains` — interactively create/edit the domain whitelist in `<WIKI_BASE>/.wiki.json` (via `resolve-domain --set`), then exit WITHOUT generating docs.
+- `--domain-index[=<domain>]` — rebuild only the domain landing index `<WIKI_BASE>/<domain>/index.md` (engine `update-domain-index`), then exit. Omitted value = the domain this repo resolves to.
 
 Default behavior (multi mode):
 
@@ -42,7 +44,7 @@ Two modes, decided at initialization and recorded in `.progress.json` as `"mode"
 Before any action, main agent and all subagents must read `references/wiki-principles.md` and `references/code-wiki-conventions.md`. All rules in those files apply, in addition to the rules below.
 
 You MUST NOT:
-- Modify any file or git state in the SOURCE repo; this skill only writes under `<DOC_ROOT>` and the wiki `.gitignore` (in `<DOC_GIT_ROOT>`)
+- Modify any file or git state in the SOURCE repo; this skill only writes under `<DOC_ROOT>`, the wiki `.gitignore` (in `<DOC_GIT_ROOT>`), and the engine-maintained `<WIKI_BASE>/<DOMAIN>/index.md` (domain index) + `<WIKI_BASE>/.wiki.json` (domain registry)
 - Read `node_modules/`, `target/`, `dist/`, `build/`, `.git/`, `.idea/`, `.vscode/`, `out/`, or any compiled artifact (`*.class`, `*.jar`, `*.pyc`, lock files)
 - Run Discovery/topology during the default path; only `--force` or explicit `--step=discovery` may do that
 - Skip requested steps or reorder them; requested steps always execute in canonical order: discovery → root → subsystems → review (multi mode), or doc → review (single mode)
@@ -72,9 +74,22 @@ Generated docs live OUTSIDE the source repo, in a per-repo subfolder under a con
 3. **Derive the path set** (used by every later phase; the literal `document/` is no longer used):
    - `REPO_ROOT` = output of `git rev-parse --show-toplevel` when inside a git work tree, else the current directory.
    - `REPO_NAME` = the basename of `REPO_ROOT`.
-   - `DOC_ROOT` = `<WIKI_BASE>/<REPO_NAME>` — absolute folder holding this repo's docs.
+   - `DOMAIN` = resolved in step 3b below. The wiki is split into 领域 / domains (e.g. `old_project`, `fms`), each holding its own repos. **Domains are mandatory — there is no flat layout.**
+   - `DOC_ROOT` = `<WIKI_BASE>/<DOMAIN>/<REPO_NAME>` — absolute folder holding this repo's docs.
    - `DOC_GIT_ROOT` = `<WIKI_BASE>` — the git work tree that owns the docs.
-   - `DOC_REL` = `<REPO_NAME>` — the pathspec after `--` in every git command.
+   - `DOC_REL` = `<DOMAIN>/<REPO_NAME>` — the pathspec after `--` in every git command.
+
+3b. **Resolve `DOMAIN`** (deterministic engine subcommand + skill-side prompting). `<ENGINE_CLI>` = `<this skill's install dir>/scripts/wiki_engine/cli.py` (document-systems IS the engine's install root). Run:
+
+```
+python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE>
+```
+
+   Parse the single JSON object printed:
+   - `{"status":"resolved","domain":<D>}` → `DOMAIN = <D>` (auto-resolved from `.wiki.json` or the repo's parent folder; the engine persists the mapping in `<WIKI_BASE>/.wiki.json`).
+   - `{"status":"no_registry","candidate":<C>}` → first-time setup. `AskUserQuestion`: 「未发现域配置。以父目录名 `<C>` 建立首个域并归入本仓？」 options 「是，建域 `<C>`（推荐）」/「自定义域名」. With the chosen `<d>`, run `python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <d>`; `DOMAIN = <d>`.
+   - non-zero exit `{"code":"E_UNKNOWN_DOMAIN","detail":{"candidate":<C>,"domains":[...]}}` → the parent `<C>` is not a known domain. `AskUserQuestion`: pick one of the existing `domains`, OR register `<C>` as a **new** domain. If the user picks "new domain `<C>`", ask a SECOND confirmation 「确认把 `<C>` 加入 domains 白名单？」 before persisting; then `resolve-domain … --set <chosen>`; `DOMAIN = <chosen>`. **No "keep this repo flat" option** — domains are mandatory.
+   - If the user declines to establish/choose a domain, ABORT this run with a clear Chinese message (never silently fall back to a flat path).
 4. **Ensure the wiki base is a git repo** (the diff/restore review workflow depends on it):
    - Create `<WIKI_BASE>` if it does not exist.
    - Run `git -C <WIKI_BASE> rev-parse --is-inside-work-tree`. If it fails, run `git -C <WIKI_BASE> init` and print:
@@ -356,6 +371,8 @@ After the review subagent returns, the main agent:
 
 ## Phase 6 — Wrap-up (main agent prints to user)
 
+**Refresh the domain index first** (so the domain landing page reflects this repo): run `python -X utf8 <ENGINE_CLI> update-domain-index --wiki <WIKI_BASE> --domain <DOMAIN>`. Skip only when no docs were (re)generated (e.g. a pure `--step=review` run).
+
 Print:
 
 ```text
@@ -372,6 +389,7 @@ Print:
   <DOC_ROOT>/<name2>/architecture.md     — <name2> 详细
   ...
   <DOC_ROOT>/.review.md                  — 跨文档审校报告（仅在 review 步骤执行时更新）
+  <WIKI_BASE>/<DOMAIN>/index.md          — 域索引（本域各仓导航；每次生成后自动刷新）
 
 查看待确认疑问（每个子系统文档的 §10）：
   在 IDE 中全局搜索 `## 10. 待确认`
@@ -400,6 +418,8 @@ Single mode prints a different message — see **## Single mode overrides**.
 ## Single mode overrides
 
 When Phase 1.2 resolves **mode = single** (via `--single`, or a saved `"mode": "single"`), the current folder is documented as ONE system. Follow the Phase 1–6 flow above with the deltas below; everything not listed here is unchanged. Canonical step order is `doc`, `review`.
+
+**Domain resolution + domain index apply unchanged**: a single-system repo still resolves `DOMAIN` (Phase 1.0 step 3b) → `DOC_ROOT = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>`, and Phase 6 still refreshes `<WIKI_BASE>/<DOMAIN>/index.md` (the repo is one of the domain's repos).
 
 **Initialization.** `--single` (with or without `--force`) initializes/uses single mode. If a multi `.progress.json` already exists, `--single` re-initializes as single — warn and confirm before overwriting. If the user declines, abort with no changes — keep the existing multi `.progress.json` and docs intact (e.g. print `已取消：保留现有 multi 文档，未做改动。`). With a saved `"mode": "single"`, `--force` (even without `--single`) re-initializes in single mode — re-infer `<TYPE>`, start a fresh single progress, and regenerate the doc; it never switches to multi, and steps remain `doc, review`.
 
