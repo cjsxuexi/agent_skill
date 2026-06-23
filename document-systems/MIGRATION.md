@@ -8,7 +8,47 @@ preferably through the engine so every change is contract-validated and atomic.
 Each step is tagged `[engine]` (a `wiki_engine` transaction), `[refine]` (driven inside a `/wiki-refine`
 session), or `[manual]` (a human decision / one-off edit). Operator names referenced here track the
 engine (MAINTAINER §15): `promote_to_common` / `move_with_reference` / `resolve_question` /
-`update_section` / `add_question` / `update_root`.
+`update_section` / `add_question` / `update_root` / `update_domain_index`; subcommand: `resolve-domain`.
+
+---
+
+## M0 — 域化迁移 (domain migration)  `[engine]` `[manual]`
+
+Run **before M1–M5**. M1–M5 remain verbatim and fall inside the same governance window (one
+`git -C <WIKI_BASE> diff` review + commit per completed step).
+
+1. **建域注册表** — run `/document-systems --init-domains`. This writes `<WIKI_BASE>/.wiki.json`
+   with the domain whitelist (e.g. `["old_project","fms"]`) and initialises an empty `repos` map.
+   `[engine]`
+
+2. **迁移现有 flat 仓目录** — for each existing flat repo directory at `<WIKI_BASE>/<repo>`, run:
+   ```
+   git -C <WIKI_BASE> mv <repo> <domain>/<repo>
+   ```
+   Intra-repo links are relative (`./<sub>/architecture.md`, `../_common/…`), so they survive the
+   move intact — verified: the wiki contains 0 `](../../)` cross-repo absolute links. `[manual]`
+
+3. **刷新根样板** — for repos whose root doc (`<domain>/<repo>/architecture.md`) was generated with
+   the two-level `## 仓内公共文档` boilerplate (`./_common/` and `../../_common/` only), run:
+   ```
+   /document-systems --step=root
+   ```
+   to regenerate it with the three-level wording (`./_common/`, `../_common/`, `../../_common/`). `[engine]`
+
+4. **固化 repo→domain 映射** — for each migrated repo, run:
+   ```
+   resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <domain>
+   ```
+   This persists the `repo→domain` mapping into `.wiki.json`'s `repos` object. `[engine]`
+
+5. **生成域索引** — for each domain, run:
+   ```
+   /document-systems --domain-index=<domain>
+   ```
+   This builds `<WIKI_BASE>/<domain>/index.md` (the domain landing index, engine-maintained). `[engine]`
+
+- **Gate**: `/wiki-refine --lint` over the whole wiki is clean; `git -C <WIKI_BASE> diff` reviewed
+  before committing the wiki repo.
 
 ---
 

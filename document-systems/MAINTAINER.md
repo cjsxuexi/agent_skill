@@ -62,21 +62,28 @@ Skill prompts presented to the agent list rules directly, without meta-categoriz
 
 ## 7. Documentation-location resolution
 
-Output no longer lives at a fixed `document/`; it resolves to `<DOC_ROOT>` = `<WIKI_BASE>/<REPO_NAME>` (default `WIKI_BASE` = `D:\wiki`), with git operations scoped to the wiki repo via `git -C <DOC_GIT_ROOT> ... -- <DOC_REL>/`.
+Output no longer lives at a fixed `document/`; it resolves to:
 
-- Both `SKILL.md` files MUST define `WIKI_BASE`, `REPO_ROOT`, `REPO_NAME`, `DOC_ROOT`, `DOC_GIT_ROOT`, `DOC_REL` in a Phase 1.0 step that runs before any git check or file write/read.
+- `<DOC_ROOT>` = `<WIKI_BASE>/<DOMAIN>/<REPO_NAME>` (default `WIKI_BASE` = `D:\wiki`)
+- `<DOC_REL>` = `<DOMAIN>/<REPO_NAME>`
+
+Git operations are scoped to the wiki repo via `git -C <DOC_GIT_ROOT> ... -- <DOC_REL>/`. A `<WIKI_BASE>/.wiki.json` **domain registry** (committed, travels with the wiki repo) records the domain whitelist and per-repo→domain mappings. It is the authoritative source for `resolve-domain`.
+
+- Both `SKILL.md` files MUST define `WIKI_BASE`, `REPO_ROOT`, `REPO_NAME`, `DOMAIN`, `DOC_ROOT`, `DOC_GIT_ROOT`, `DOC_REL` in a Phase 1.0 step that runs before any git check or file write/read. `DOMAIN` is resolved via the `resolve-domain` subcommand (see §8).
 - `<DOC_ROOT>` (and, where git commands are emitted, `<DOC_GIT_ROOT>` / `<DOC_REL>`) must be the ONLY way output paths are expressed in `subsystem-prompt.md`, `review-prompt.md`, `refine-subagent-prompt.md`, and `templates/root-architecture.md`. No literal `document/` output path may remain — the only allowed `document/` mentions are explanatory notes and the neutral `<doc-dir>` examples in `wiki-principles.md`.
 - Every `<DOC_ROOT>` used by a prompt template must appear in that template's Inputs list (the dispatcher substitutes it).
 - `discovery-prompt.md` stays output-agnostic: it emits only source paths relative to `<REPO_ROOT>` and must NOT reference `<DOC_ROOT>`.
 - Inter-document links inside generated docs stay relative (`./<name>/architecture.md`, `../architecture.md`, `<子系统>/architecture.md`) so they remain valid wherever `<DOC_ROOT>` resolves. Operational hints embedded in generated content (grep / git commands) carry the `<DOC_ROOT>` / `<DOC_GIT_ROOT>` / `<DOC_REL>` placeholders and are substituted at write time.
 - The wiki repo TRACKS `<DOC_REL>/.progress.json` (committed, NOT gitignored); only `<DOC_REL>/.review.md` (a regenerable report) is ignored. The committed `.progress.json` is the only machine record of `mode` / `manifest` / `topology` for other maintainers and fresh clones, so Phase 1.4 must NOT add `.progress.json` to `.gitignore` and must strip a legacy `.progress.json` ignore line.
+- **Write boundary** (both skills): `<DOC_ROOT>` (all output files), `<DOC_REL>/.gitignore` in the wiki repo, plus engine-maintained files `<WIKI_BASE>/<DOMAIN>/index.md` (domain landing index) and `<WIKI_BASE>/.wiki.json` (domain registry). No other paths outside `<DOC_ROOT>` may be written without a matching `§8` governance rule.
 
 ## 8. Shared-config contract between the two skills
 
 Both skills read/write one shared config `%USERPROFILE%\.document-systems.json` (`{"wiki_base": "<abs path>"}`):
 
 - First run (config absent / empty / `--reconfigure`) asks via `AskUserQuestion` (Claude Code) or a printed prompt (other harness), then persists the choice.
-- `/wiki-refine` must resolve the SAME `DOC_ROOT` that `/document-systems` wrote to (same config key, same `<WIKI_BASE>/<REPO_NAME>` rule). A change to the resolution rule in one skill must be mirrored in the other.
+- `/wiki-refine` must resolve the SAME `DOC_ROOT` that `/document-systems` wrote to (same config key, same `<WIKI_BASE>/<DOMAIN>/<REPO_NAME>` rule). A change to the resolution rule in one skill must be mirrored in the other.
+- **Both skills resolve `DOMAIN` by calling the SAME engine subcommand `resolve-domain`** (deterministic), with skill-side `AskUserQuestion` prompting when interactive input is needed. This single shared code path guarantees domain resolution never drifts between the two skills — a change to the algorithm is made once in the engine and both skills inherit it automatically. Domains are **mandatory**: there is no flat-mode fallback. A skill run that cannot resolve a domain MUST abort with a clear message rather than silently omitting the `<DOMAIN>` segment.
 
 ## 9. Single vs multi mode parity
 
@@ -109,9 +116,15 @@ Operational meaning: **every contract change must be walked back through the eng
 Engine section-name constants (`scripts/wiki_engine/` literals used by `doc_kind`, `parser`, `address`, and `update_root` named regions) MUST equal the literal chapter names in the templates and contract. The Check 4 section-name alignment set is **extended** to include:
 
 - the four common templates' three-section skeleton (`## 1. 范围与级别`, the type body heading, `## 待确认 / 疑问`);
-- `references/common-conventions.md` (the four `common_type` values, the level names `repo`/`global`, the frontmatter keys);
+- `references/common-conventions.md` (the four `common_type` values, the level names — now the full `level` enum **`repo` / `domain` / `global`** (engine `COMMON_LEVELS`), the frontmatter keys) — see also common-conventions §7;
 - the new root chapter `## 仓内公共文档` (root template ↔ engine `update_root` `common_index_entry` region);
-- the engine's table column orders for `subsystem_row` / `protocol_row` / `common_index_entry` ↔ the corresponding template table headers.
+- the engine's table column orders for `subsystem_row` / `protocol_row` / `common_index_entry` ↔ the corresponding template table headers;
+- the **domain landing index** `index.md` at `<WIKI_BASE>/<DOMAIN>/index.md` — engine-maintained, not skill-written directly;
+- the engine `_root_common_index_entry` level→link-prefix map:
+  - `repo` → `./_common/` (link within the same repo doc-root)
+  - `domain` → `../_common/` (link up to the domain's `_common/`)
+  - `global` → `../../_common/` (link up to the wiki root `_common/`)
+  — this map lives in the engine (design §4.3) and must match any template that generates `common_index_entry` rows.
 
 Renaming any of these requires updating the engine constant and the template/contract literal together.
 
@@ -136,4 +149,11 @@ A change to a skill that depends on the engine (wiki-refine flow, document-syste
 
 ## 15. MIGRATION.md stays in sync with engine operator names / contract regions
 
-`MIGRATION.md` references engine operator names (`promote_to_common`, `move_with_reference`, `resolve_question`, `update_section`, `add_question`, `update_root`) and contract regions. Renaming an operator or a named region requires updating `MIGRATION.md` in the same change.
+`MIGRATION.md` references engine operator names (`promote_to_common`, `move_with_reference`, `resolve_question`, `update_section`, `add_question`, `update_root`, `update_domain_index`) and the engine subcommand `resolve-domain`. Renaming an operator, a subcommand, or a named region requires updating `MIGRATION.md` in the same change. `MIGRATION.md` M0 documents the use of `resolve-domain --set` and `update_domain_index` (`--domain-index` flag) for domain migration.
+
+## 16. Domain registry + mandatory domains
+
+- The `<WIKI_BASE>/.wiki.json` domain registry MUST exist for any domained wiki; its absence is an error, not a fallback to flat mode. Both skills validate its presence (or create it via `--init-domains`) before resolving paths.
+- `resolve-domain` MUST never produce a flat (domain-less) path. There is no flat branch in either skill — flat output paths are a defect.
+- No skill run may emit `<DOC_ROOT>` = `<WIKI_BASE>/<REPO_NAME>` (two segments only). The three-segment form `<WIKI_BASE>/<DOMAIN>/<REPO_NAME>` is the only valid shape.
+- **KNOWN-TODO (Plan-4 final-review recommendation, not yet implemented):** The engine should raise `UsageError` when `level` is supplied with a value outside the `COMMON_LEVELS` enum (`repo`, `domain`, `global`). Until this is implemented, out-of-enum level values silently pass the engine. When implemented, add an engine-test assertion and update this check to reflect enforcement.
