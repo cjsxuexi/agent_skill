@@ -174,6 +174,10 @@ def cmd_init_common(args):
                   .replace("<QUESTIONS>", "无"))
     mt = _MiniTxn(doc_root, install_root)
     abspath, rel_display = ops_mod._common_target_path(mt, args.level, args.name)
+    base = os.path.dirname(os.path.dirname(abspath))
+    if not os.path.isdir(base):
+        raise UsageError("目标目录不存在：{}（请先建立该仓/域/wiki 目录）".format(base),
+                         code="E_USAGE")
     if os.path.exists(abspath):
         raise UsageError("目标已存在：{}".format(abspath), code="E_USAGE")
     io_utf8.write_text(abspath, content)

@@ -184,6 +184,15 @@ class CliTest(unittest.TestCase):
         with open(data["created"], encoding="utf-8") as fh:
             self.assertIn("level: global", fh.read())
 
+    def test_init_common_domain_missing_domain_dir_errors(self):
+        wiki = os.path.join(self.tmp, "wiki")
+        os.makedirs(wiki)  # wiki 存在，但 wiki/ghost 域目录不存在
+        code, out = _run("init-common", "--level", "domain", "--type", "glossary",
+                         "--name", "x", "--wiki-base", wiki, "--domain", "ghost")
+        self.assertEqual(code, 2)
+        data = json.loads(out)
+        self.assertEqual(data["code"], "E_USAGE")
+
     def test_update_domain_index(self):
         wiki = os.path.join(self.tmp, "wiki")
         repo = os.path.join(wiki, "old_project", "fabusurfer")
