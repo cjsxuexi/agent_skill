@@ -72,7 +72,8 @@ You MUST:
    - Otherwise (config missing/empty, or `--reconfigure`) ask the user where docs are stored. In Claude Code use the `AskUserQuestion` tool; otherwise print the options and wait for a typed reply. Question (Chinese): 「架构文档所在的 wiki 根目录？将在其下按仓库名查找子目录。」 Options: `D:\wiki（默认，推荐）` and `自定义路径` (a custom absolute path comes from the user's "Other" free-text reply). Persist the chosen value to the shared config.
 2. **Derive the path set** (the literal `document/` is no longer used):
    - `REPO_ROOT` = output of `git rev-parse --show-toplevel` when inside a git work tree, else the current directory. `REPO_NAME` = its basename.
-   - `DOC_ROOT` = `<WIKI_BASE>/<REPO_NAME>`; `DOC_GIT_ROOT` = `<WIKI_BASE>`; `DOC_REL` = `<REPO_NAME>`.
+   - `DOC_GIT_ROOT` = `<WIKI_BASE>`.
+   - `DOMAIN` and the final `DOC_ROOT` / `DOC_REL` are resolved AFTER `<ENGINE_CLI>` is available (§1.0.b + the domain-resolution step that follows it). Their three-segment forms are: `DOC_ROOT = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>`; `DOC_REL = <DOMAIN>/<REPO_NAME>`.
    - `/wiki-refine` is still invoked from inside the SOURCE repo so the subagent can trace source; only the docs live under `<DOC_ROOT>`.
 
 The wiki git repo is expected to already exist from a prior `/document-systems` run; the 1.2 prerequisite check confirms the docs are present.
@@ -93,6 +94,23 @@ literal — the absolute path is the *result* of this resolution:
 Derive once and reuse: `<ENGINE_CLI>` = `<安装根>\scripts\wiki_engine\cli.py`; the contract files are
 `<安装根>\references\{wiki-principles,code-wiki-conventions,common-conventions,scenario-playbook}.md`;
 `<PLAYBOOK_PATH>` = `<安装根>\references\scenario-playbook.md`.
+
+### 1.0.c Resolve `DOMAIN`
+
+With `<ENGINE_CLI>` now available, resolve the wiki domain. Run:
+
+```
+python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE>
+```
+
+Parse the single JSON object printed:
+
+- `{"status":"resolved","domain":<D>}` → `DOMAIN = <D>` (auto-resolved from `.wiki.json` or the repo's parent folder; the engine persists the mapping in `<WIKI_BASE>/.wiki.json`).
+- `{"status":"no_registry","candidate":<C>}` → first-time setup. `AskUserQuestion`: 「未发现域配置。以父目录名 `<C>` 建立首个域并归入本仓？」 options 「是，建域 `<C>`（推荐）」/「自定义域名」. With the chosen `<d>`, run `python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <d>`; `DOMAIN = <d>`.
+- non-zero exit `{"code":"E_UNKNOWN_DOMAIN","detail":{"candidate":<C>,"domains":[...]}}` → the parent `<C>` is not a known domain. `AskUserQuestion`: pick one of the existing `domains`, OR register `<C>` as a **new** domain. If the user picks "new domain `<C>`", ask a SECOND confirmation 「确认把 `<C>` 加入 domains 白名单？」 before persisting; then `resolve-domain … --set <chosen>`; `DOMAIN = <chosen>`. **No "keep this repo flat" option** — domains are mandatory.
+- If the user declines to establish/choose a domain, ABORT this run with a clear Chinese message (never silently fall back to a flat path).
+
+Finalize: `DOC_ROOT = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>`; `DOC_REL = <DOMAIN>/<REPO_NAME>`.
 
 ### 1.1 Wiki git status check
 
@@ -164,7 +182,7 @@ payloads always travel through files, never the command line (wiki-principles / 
 
 **Read context (multi).** Read `<DOC_ROOT>/architecture.md`. From the `子系统清单` table extract every subsystem name + path; from the dependency graph and topology layers extract relationships. The main agent dispatches strictly from this list — do not auto-discover new subsystems.
 
-**Read common-document context.** Also read, if present, the root doc's `## 仓内公共文档` table (repo-level common docs under `<DOC_ROOT>\_common\`) and list the global `<WIKI_BASE>\_common\` directory. These common documents are valid refine targets (light contract) alongside subsystems. Hold them as `<COMMON_CONTEXT>` for dispatch.
+**Read common-document context.** Also read, if present, the root doc's `## 仓内公共文档` table (repo-level common docs under `<DOC_ROOT>\_common\`), the domain-level directory `<WIKI_BASE>\<DOMAIN>\_common\`, and the global `<WIKI_BASE>\_common\` directory. These three levels of common documents are valid refine targets (light contract) alongside subsystems. Hold all three levels as `<COMMON_CONTEXT>` for dispatch.
 
 ### 1.4 Print ready message
 
@@ -218,7 +236,7 @@ Dispatch one general-purpose subagent with `model: sonnet`. Its prompt is `refer
 - `<DOC_ROOT>` — absolute folder holding this repo's docs (`<WIKI_BASE>/<REPO_NAME>`)
 - `<ENGINE_CLI>` — absolute path to the engine CLI (`<安装根>\scripts\wiki_engine\cli.py`), resolved in 1.0.b
 - `<PLAYBOOK_PATH>` — absolute path to `scenario-playbook.md`
-- `<COMMON_CONTEXT>` — the repo-level + global common docs available as targets / reference owners
+- `<COMMON_CONTEXT>` — the repo-level + domain-level + global common docs available as targets / reference owners
 - `<SINGLE_MODE>` — `true` in single mode, else `false`
 - `<USER_FEEDBACK>` — carried only when the user issued `E <feedback>` for a retry; otherwise empty
 - `<EXPANDED_SCOPE>` — present only on an escalation re-dispatch (2.4.b); the approved zones the subagent may now read
@@ -307,8 +325,8 @@ Otherwise show each one by one:
 ```
 公共化建议 <i>/<N>：
   事实：<被多模块共享、无单一属主的事实>
-  级别：<repo|global>   类型：<glossary|shared-lib|protocol|infra>
-  目标公共文档：_common/<name>.md（<仓库级|全局>，<新建|已存在>）
+  级别：<repo|domain|global>   类型：<glossary|shared-lib|protocol|infra>
+  目标公共文档：_common/<name>.md（<仓库级|域级|全局>，<新建|已存在>）
   受影响子系统文档：<将内联内容改为引用的文档列表>
   证据：<grep / 源码锚点>
 
@@ -325,8 +343,9 @@ Otherwise show each one by one:
   is the C-phase transitional path; D-phase keeps it as the explicit S choice — plan §13 决策 #6.)
 - `R` → no change.
 
-For a `global` promotion the level must be shown explicitly here and confirmed by the user
-(common-conventions §3 default level is `repo`).
+For a `domain` or `global` promotion the level must be shown explicitly here and confirmed by the user
+(common-conventions §3 default level is `repo`). Both `domain` and `global` require this explicit
+confirmation step — the user must acknowledge the wider scope before the engine applies the promotion.
 
 ### 2.6 Next round
 
