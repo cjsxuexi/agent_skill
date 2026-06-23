@@ -4,7 +4,7 @@ Conventions for **shared documents** owned by the wiki engine — facts that mor
 subsystem (or more than one repository) needs, with no single subsystem as their natural
 owner. Apply when promoting, authoring, or linting a document under a `_common/` namespace.
 
-This file is the single source of truth for: the directory namespace model, the two-level
+This file is the single source of truth for: the directory namespace model, the three-level
 `_common` semantics, the placement decision ladder, the four common-document types and their
 light structure, the read-source boundary ladder, and the engine's ignore-glob list. It is
 readable on its own; where a rule extends a general wiki rule, the clause is named (e.g.
@@ -20,8 +20,9 @@ a real repository or subsystem name.
 
 | Class | Test | Examples | How the engine treats it |
 |---|---|---|---|
-| Business wiki repo | top-level dir NOT starting with `_` or `.` | `fabusurfer`, `fms-server`, `charge-manage-platform` | governed by the strict contract (then refined by DocKind) |
-| Engine-managed common namespace | exactly `_common` (global `D:\wiki\_common\`, repo-level `<DOC_ROOT>\_common\`) | `_common/` | light contract; `promote_to_common` / `init-common` / `questions` / light-lint operate here; referenced by business docs via `../_common/`, `../../_common/` |
+| Domain directory | top-level dir NOT starting with `_` or `.` AND its name appears in `.wiki.json`'s `domains` list | `autonomous-driving/`, `fleet-mgmt/` | a container for business wiki repos; the engine resolves repos under it via `resolve-domain`; not linted directly |
+| Business wiki repo | non-`_`/`.` dir INSIDE a domain directory | `fabusurfer`, `fms-server`, `charge-manage-platform` (under their domain dir) | governed by the strict contract (then refined by DocKind) |
+| Engine-managed common namespace | exactly `_common` (global `<WIKI_BASE>/_common/`, domain-level `<WIKI_BASE>/<DOMAIN>/_common/`, repo-level `<DOC_ROOT>/_common/`) | `_common/` | light contract; `promote_to_common` / `init-common` / `questions` / light-lint operate here; referenced by business docs via `../_common/`, `../../_common/`, `../../../_common/` |
 | Engine-ignored reserved area | any other `_`-prefixed dir | `_meta/` (gitnexus notes, tool/process docs) | never linted, never touched, no contract required — a free area |
 
 Directories starting with `.` (`.git`, `.idea`, `.claude`) are always skipped. The same rule
@@ -31,22 +32,21 @@ ignored, and everything else is a subsystem directory. The distinction between `
 
 ---
 
-## 2. Two-level common
+## 2. Three-level common
 
-There are two `_common/` namespaces. `D:\wiki` is a single git work tree, so both levels live
+There are three `_common/` namespaces. `<WIKI_BASE>` is a single git work tree, so all levels live
 inside it and relative links reach across them:
 
-- **Global** `D:\wiki\_common\` — facts shared **across repositories** (or company-wide
-  standards). A subsystem document reaches it via `../../_common/<name>.md`.
-- **Repo-level** `<DOC_ROOT>\_common\` — facts shared by **two or more subsystems inside one
-  repository**, with no single owner. A subsystem document reaches it via `../_common/<name>.md`.
+- **Global** `<WIKI_BASE>/_common/` — facts shared **across domains** (or company-wide standards).
+- **Domain-level** `<WIKI_BASE>/<DOMAIN>/_common/` — facts shared by **two or more repositories inside one domain**, with no single repo as owner.
+- **Repo-level** `<DOC_ROOT>/_common/` — facts shared by **two or more subsystems inside one repository**, with no single subsystem as owner.
 
-Reference path rule (computed from the source document's depth):
+Reference path rule (computed from the source document's depth; `<DOC_ROOT>` = `<WIKI_BASE>/<DOMAIN>/<REPO_NAME>`):
 
-| Source document | → repo-level `_common` | → global `_common` |
-|---|---|---|
-| `<DOC_ROOT>/<subsystem>/architecture.md` | `../_common/<name>.md` | `../../_common/<name>.md` |
-| `<DOC_ROOT>/architecture.md` (root / single) | `./_common/<name>.md` | `../_common/<name>.md` |
+| 源文档 (source doc) | → 仓 `_common` | → 域 `_common` | → 全局 `_common` |
+|---|---|---|---|
+| `<DOC_ROOT>/<subsystem>/architecture.md` | `../_common/<name>.md` | `../../_common/<name>.md` | `../../../_common/<name>.md` |
+| `<DOC_ROOT>/architecture.md` (root / single) | `./_common/<name>.md` | `../_common/<name>.md` | `../../_common/<name>.md` |
 
 Cross-document links into a common document MUST carry a section anchor (wiki-principles §4),
 computed with the engine's GitHub-exact slugger.
@@ -61,17 +61,20 @@ level** that fits.
 1. **Owned by a single subsystem** → leave it in that subsystem's document; everyone else links
    to it (wiki-principles §3 ownership). Promotion is NOT warranted.
 2. **Shared by ≥2 subsystems in this repo, no single owner** → repo-level common
-   (`<DOC_ROOT>\_common\`).
-3. **A second repository genuinely consumes it, or it is a company-wide standard** → global
-   common (`D:\wiki\_common\`).
+   (`<DOC_ROOT>/_common/`).
+3. **Shared by ≥2 repositories in this domain, no single repo as owner** → domain-level common
+   (`<WIKI_BASE>/<DOMAIN>/_common/`). Requires explicit confirmation at the 2.5.b 公共化门禁.
+4. **Shared across ≥2 domains, or a company-wide standard** → global common
+   (`<WIKI_BASE>/_common/`). Requires explicit confirmation at the 2.5.b 公共化门禁.
 
-When in doubt, choose the lower level and record a "建议全局化" entry in the common document's
-`## 待确认 / 疑问` (or the subsystem's §10) rather than promoting speculatively.
+When in doubt, choose the lower level and record a "建议域级公共化"/"建议全局化" entry in the
+common document's `## 待确认 / 疑问` (or the subsystem's §10) rather than promoting speculatively.
 
-**Default level.** Unless rung ③ is positively established, the `level` of a promotion is always
-`repo` — this is the engine's default value. Choosing `global` requires the level to be stated
-explicitly at the 2.5.b 公共化门禁 and confirmed by the user. (Until a real cross-repo consumer
-appears, the global `_common/` namespace stays legitimately near-empty — only its `index.md`.)
+**Default level.** Unless rung ③ or ④ is positively established, the `level` of a promotion is
+always `repo` — this is the engine's default value. Choosing `domain` or `global` requires the
+level to be stated explicitly at the 2.5.b 公共化门禁 and confirmed by the user. (Until real
+cross-repo or cross-domain consumers appear, the domain and global `_common/` namespaces stay
+legitimately near-empty — only their `index.md`.)
 
 ---
 
@@ -127,9 +130,10 @@ plus an `index.md` for navigation**.
   computed live by the engine (`questions` / `refs` / grep) and **never written into the index**
   (wiki-principles §7 native-tools-first).
 
-`index.md` is the one derived file the engine is allowed to maintain, and only at the global
-level (it is the global-layer root document). Repo-level `_common/` needs no index — the repo
-root document's `## 仓内公共文档` section already lists its members.
+`index.md` is the one derived file the engine is allowed to maintain at both the global and
+domain levels (each is a thin navigation index for its `_common/` namespace, maintained by the
+engine's `update-domain-index` op). Repo-level `_common/` needs no index — the repo root
+document's `## 仓内公共文档` section already lists its members.
 
 ---
 
@@ -140,7 +144,7 @@ Every common document begins with YAML frontmatter:
 ```yaml
 ---
 common_type: glossary | shared-lib | protocol | infra
-level: repo | global
+level: repo | domain | global
 owns: <stable id of the fact this document owns>
 ---
 ```

@@ -10,7 +10,7 @@ Before starting, read the contract files in the same directory as `<PLAYBOOK_PAT
 is `<安装根>\references\`):
 
 - `wiki-principles.md`, `code-wiki-conventions.md` — modification constraints
-- `common-conventions.md` — two-level `_common`, placement ladder, read-source boundary + escalation
+- `common-conventions.md` — three-level `_common`, placement ladder, read-source boundary + escalation
 - `<PLAYBOOK_PATH>` (`scenario-playbook.md`) — the S1–S8 table + the three classification guides
 
 All rules in those files apply. If any is missing, return an error JSON immediately.
@@ -25,7 +25,7 @@ All rules in those files apply. If any is missing, return an error JSON immediat
 - `<DOC_ROOT>` — absolute doc folder; new ancillary files go under it
 - `<ENGINE_CLI>` — absolute path to the engine CLI; invoke as `python -X utf8 <ENGINE_CLI> <cmd> ...` (probe interpreter `python` then `py -3`/`python3`, per windows-cn-shell-safety)
 - `<PLAYBOOK_PATH>` — absolute path to `scenario-playbook.md`
-- `<COMMON_CONTEXT>` — the repo-level + global common docs available as reference owners / promote targets
+- `<COMMON_CONTEXT>` — the repo-level, domain-level, and global common docs available as reference owners / promote targets
 - `<SINGLE_MODE>` — `true` when the repo is one system (single doc), else `false`/absent
 - `<USER_FEEDBACK>` — present only on an `E` retry; the user's correction note. May be empty.
 - `<EXPANDED_SCOPE>` — present only on an escalation re-dispatch: the approved zones you may now read.
@@ -34,7 +34,7 @@ All rules in those files apply. If any is missing, return an error JSON immediat
 
 If `<SINGLE_MODE>` is `true`, the repo is ONE `§1–§10` doc and `<ROOT_DOC_PATH>` IS that doc. Your
 engine transactions target it (DocKind strict). Always return `"root_updates": []` (no separate root).
-`promotions` may still be non-empty but only at `level=global`. New ancillary files go directly under
+`promotions` may still be non-empty but only at `level=domain` or `level=global` (a single-system repo is still inside a domain). New ancillary files go directly under
 `<DOC_ROOT>/`. Everything else is unchanged.
 
 ## Hard rules
@@ -66,8 +66,8 @@ finish every part that does NOT depend on that zone, then return
 
 Map (topic + trace results + `<USER_SUPPLEMENT>`) onto S1–S8 (a topic may hit several). Answer the
 playbook's classification questions: owner (which subsystem defines the fact), common level (repo vs
-global, default repo), full vs partial resolution. The owner/level/full-vs-partial calls are yours; the
-engine only validates the structured result.
+domain vs global, default repo), full vs partial resolution. The owner/level/full-vs-partial calls are
+yours; the engine only validates the structured result.
 
 ### R3 — Author + build the transaction
 
@@ -82,7 +82,7 @@ ONE transaction JSON (`{version, doc_root: <DOC_ROOT>, source_root: <REPO_ROOT>,
   - partial: `residual_file` (the rewritten residual §10 entry)
 - `add_question` `{target, content_file}` — S6 (the entry must carry `[§位置]` / `已检查` / `建议核实方向`)
 - `move_with_reference` `{sources:[{target, at, replace_match_file, reference_text_file}, ...]}` — S3
-- `promote_to_common` `{level, type, common_name, title_file, body_file, sources:[{target, at, replace_match_file, reference_text_file}, ...]}` — S4
+- `promote_to_common` `{level, type, common_name, title_file, body_file, sources:[{target, at, replace_match_file, reference_text_file}, ...]}` — S4; `level ∈ repo|domain|global`
   (or, transitionally, an `add_question` 建议公共化 on each subsystem); surface S4 in `promotions`
 - Root-document impact → `update_root` items in `root_updates` (NOT in this transaction):
   `{kind, action:"add", ...}` with kind ∈ `subsystem_row{name,row}` | `mermaid_node{node_id,label}` |

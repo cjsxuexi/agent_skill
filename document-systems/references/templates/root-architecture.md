@@ -13,9 +13,9 @@ Inline values (single token):
   <REPO_NAME>         repo directory name (basename of repo root)
   <YYYY-MM-DD>        today's date, ISO form
   <SUBSYSTEM_COUNT>   total number of subsystems from Phase 2
-  <DOC_ROOT>          absolute doc folder for this repo (<WIKI_BASE>/<REPO_NAME>)
+  <DOC_ROOT>          absolute doc folder for this repo (<WIKI_BASE>/<DOMAIN>/<REPO_NAME>)
   <DOC_GIT_ROOT>      git work tree owning the docs (<WIKI_BASE>)
-  <DOC_REL>           doc pathspec inside the wiki repo (<REPO_NAME>)
+  <DOC_REL>           doc pathspec inside the wiki repo (<DOMAIN>/<REPO_NAME>)
   (the three above appear in the 文档维护说明 hints below — substitute the real
    resolved values when writing the file)
 
@@ -72,7 +72,10 @@ Block placeholders (multi-line, generated from Phase 2 data):
     | [<name>](./_common/<name>.md) | 仓库级 | <common_type> | <one-sentence purpose> |
   Detect them from <DOC_ROOT>/_common/*.md frontmatter (common_type / owns).
   If there are no repo-level common documents yet, write a single line containing only: 无
-  (The engine's update_root common_index_entry op maintains this table after init.)
+  Note: init scans <DOC_ROOT>/_common/ for REPO-level rows only. Domain-level common rows
+  (linking ../_common/) and global common rows (linking ../../_common/) are added later by the
+  engine's update_root common_index_entry op (which selects the correct relative prefix based on
+  the common document's level field). Do not pre-populate domain/global rows during init.
 
 <AUXILIARY_RESOURCES>
   Bullet list, one per item in discovery JSON `resources`:
@@ -131,7 +134,7 @@ graph TD
 
 ## 仓内公共文档
 
-跨子系统共享、无单一属主的事实（术语 / 共享库契约 / 公共协议 / 基础设施约定）由仓库级公共文档 `./_common/` 持有；子系统文档以锚点引用、不复制其内部细节。跨仓库或全公司级共享事实见全局 `../_common/`。
+跨子系统共享、无单一属主的事实（术语 / 共享库契约 / 公共协议 / 基础设施约定）由仓库级公共文档 `./_common/` 持有；子系统文档以锚点引用、不复制其内部细节。本域内跨仓库共享事实见域级 `../_common/`；跨域或全公司级共享事实见全局 `../../_common/`。
 
 | 公共文档 | 级别 | 类型 | 说明 |
 |---|---|---|---|
