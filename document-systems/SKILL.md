@@ -346,7 +346,7 @@ Read `references/subsystem-prompt.md` and substitute these placeholders for each
 - `<EXISTING_GENERATED_DOC>` — path to current generated `<DOC_ROOT>/<NAME>/architecture.md` if any, else `null`
 - `<DISCOVERY_HINTS>` — JSON hints object for this subsystem from the saved manifest
 - `<REPO_ROOT>` — repository root absolute path
-- `<DOC_ROOT>` — absolute folder holding this repo's generated docs (`<WIKI_BASE>/<REPO_NAME>`); the subagent writes to `<DOC_ROOT>/<NAME>/architecture.md`
+- `<DOC_ROOT>` — absolute folder holding this repo's generated docs (`<WIKI_BASE>/<DOMAIN>/<REPO_NAME>`); the subagent writes to `<DOC_ROOT>/<NAME>/architecture.md`
 - `<SINGLE_MODE>` — `false` in multi mode (the single-mode dispatch in **## Single mode overrides** sets it `true`)
 
 The subagent's output document structure (§1–§10) is defined inside `references/subsystem-prompt.md` and must be followed exactly.

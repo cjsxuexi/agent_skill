@@ -233,7 +233,7 @@ Dispatch one general-purpose subagent with `model: sonnet`. Its prompt is `refer
 - `<TARGET_SUBSYSTEMS>` — impacted targets (each with name / DocKind strict|light / source absolute path / doc absolute path)
 - `<ROOT_DOC_PATH>` — absolute path to `<DOC_ROOT>/architecture.md`
 - `<REPO_ROOT>` — repo root absolute path
-- `<DOC_ROOT>` — absolute folder holding this repo's docs (`<WIKI_BASE>/<REPO_NAME>`)
+- `<DOC_ROOT>` — absolute folder holding this repo's docs (`<WIKI_BASE>/<DOMAIN>/<REPO_NAME>`)
 - `<ENGINE_CLI>` — absolute path to the engine CLI (`<安装根>\scripts\wiki_engine\cli.py`), resolved in 1.0.b
 - `<PLAYBOOK_PATH>` — absolute path to `scenario-playbook.md`
 - `<COMMON_CONTEXT>` — the repo-level + domain-level + global common docs available as targets / reference owners
