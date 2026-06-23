@@ -115,6 +115,11 @@ class LintRuleTest(unittest.TestCase):
         bad = "---\ncommon_type: other\nlevel: site\n---\n# x\n\n## 1. 范围与级别\n\n无\n\n## 待确认 / 疑问\n\n无\n"
         ctx = _ctx(None, DocKind.COMMON, rel="_common/x.md", text=bad)
         self.assertIn("COMMON_FRONTMATTER", _ids(lint.run_lint(ctx)))
+        # domain 级别合法（三级 common）
+        domain_doc = ("---\ncommon_type: glossary\nlevel: domain\nowns: x\n---\n"
+                      "# x\n\n## 1. 范围与级别\n\n无\n\n## 待确认 / 疑问\n\n无\n")
+        ctx2 = _ctx(None, DocKind.COMMON, rel="_common/x.md", text=domain_doc)
+        self.assertNotIn("COMMON_FRONTMATTER", _ids(lint.run_lint(ctx2)))
 
 
 class RuleCatalogTest(unittest.TestCase):

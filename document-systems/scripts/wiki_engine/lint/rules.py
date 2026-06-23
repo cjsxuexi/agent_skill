@@ -23,7 +23,7 @@ CANONICAL_TITLES = {
 }
 SPEC_WORDS = ["可能", "似乎", "推测", "估计", "应该是"]
 COMMON_TYPES = {"glossary", "shared-lib", "protocol", "infra"}
-COMMON_LEVELS = {"repo", "global"}
+COMMON_LEVELS = {"repo", "domain", "global"}
 DERIVED_RE = re.compile(r"(^\.[^/]*\.md$)|(\.(changes|questions|history|index|assets-index|prev|refine-log)\.md$)")
 # A line-number anchor is `:L<n>` anywhere, or `<file>.<ext>:<n>` with the colon
 # IMMEDIATELY after the extension (so config like `bootstrap.yml ... nacos:8848` is NOT
@@ -376,7 +376,7 @@ def check_common_frontmatter(ctx):
                             "frontmatter"))
     if lv not in COMMON_LEVELS:
         out.append(ctx.make(R_COMMON_FM, ERROR,
-                            "level 非法或缺失：{}（须为 repo/global）".format(lv), "frontmatter"))
+                            "level 非法或缺失：{}（须为 repo/domain/global）".format(lv), "frontmatter"))
     if not ow:
         out.append(ctx.make(R_COMMON_FM, ERROR, "owns 缺失（common-conventions §7）", "frontmatter"))
     return out
