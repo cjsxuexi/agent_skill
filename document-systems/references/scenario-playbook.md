@@ -40,10 +40,11 @@ Walk common-conventions §3 top-down, stop at the first match, prefer the lowest
 
 1. single subsystem owns it → not common (use S3);
 2. ≥2 subsystems in this repo share it, no owner → `level=repo`;
-3. a second repo consumes it / company standard → `level=global`.
+3. ≥2 repositories in this domain consume it, no single repo owner → `level=domain`;
+4. ≥2 domains consume it / company-wide standard → `level=global`.
 
-Default is `repo`. `global` requires explicit confirmation at the 2.5.b gate (common-conventions
-§3 default-level rule).
+Default is `repo`. `domain` and `global` both require explicit confirmation at the 2.5.b gate
+(common-conventions §3 default-level rule).
 
 ### Guide 3 — Full vs partial resolution (S1 vs S2)
 

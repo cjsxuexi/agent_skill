@@ -214,8 +214,7 @@ If the message is empty or just `Q` / `q`, jump to Phase 3.
 
 ### 2.2 Locate impacted targets
 
-The main agent matches the topic against the **candidate set = subsystems ∪ repo-level common docs
-∪ global common docs** (the common docs from `<COMMON_CONTEXT>`):
+The main agent matches the topic against the **candidate set = subsystems ∪ repo-level common docs ∪ global common docs** (the common docs from `<COMMON_CONTEXT>`):
 
 - If `--subsystem=<name>` was given, candidates are restricted to that subsystem.
 - Otherwise the main agent identifies candidates from the topic semantics (a cross-system term /
@@ -289,8 +288,7 @@ zone(s), reason, and expected benefit, then ask (two keys only):
 
 ### 2.5 Review root-doc updates
 
-Read the `root_updates` array from the subagent's return JSON (each item is a ready `update_root`
-payload — kind / action / fields). If empty, jump to 2.5.b.
+Read the `root_updates` array from the subagent's return JSON (each item is a ready `update_root` payload — kind / action / fields). If empty, jump to 2.5.b.
 
 Otherwise show each one by one:
 
@@ -339,8 +337,8 @@ Otherwise show each one by one:
 - `A` → the main agent assembles the subagent-provided `promote_to_common` transaction and runs
   `python -X utf8 <ENGINE_CLI> apply --txn <file>` (the engine scaffolds the common doc, rewrites each
   source to a reference, and runs lint-delta atomically — all-or-nothing).
-- `S` → for each affected subsystem, run the engine `add_question` with a 「建议公共化」 §10 entry. (This
-  is the C-phase transitional path; D-phase keeps it as the explicit S choice — plan §13 决策 #6.)
+- `S` → for each affected subsystem, run the engine `add_question` with a 「建议公共化」 §10 entry — a
+  deliberate defer (record the suggestion, promote later via `A`), not a fallback for missing engine support.
 - `R` → no change.
 
 For a `domain` or `global` promotion the level must be shown explicitly here and confirmed by the user
@@ -416,7 +414,7 @@ When Phase 1.3 detects `"mode": "single"`, the repo is documented as ONE `§1–
 
 **Phase 2.5 — skipped.** There is no separate root doc; the subagent returns an empty `root_updates`. Skip 2.5 and go to 2.5.b.
 
-**Phase 2.5.b — promotions.** Still runs: a single-system repo can still surface cross-repo shared facts. Common targets in single mode are global level only (there are no sibling subsystems for a repo-level common); `promote_to_common(level=global)` is reachable and goes through the 2.5.b gate.
+**Phase 2.5.b — promotions.** Still runs: a single-system repo can still surface cross-repo shared facts. Common targets in single mode are domain or global level — repo level is unreachable (a repo-level common needs ≥2 sibling subsystems within the repo, which single mode lacks); `promote_to_common(level=domain|global)` is reachable and goes through the 2.5.b gate (a `domain` promotion still needs the explicit level confirmation, same as multi mode).
 
 **`--lint` mode — single doc.** Lint the one doc: `lint --path <DOC_ROOT>\architecture.md --doc-root <DOC_ROOT>` (no `--recursive`).
 

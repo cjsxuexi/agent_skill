@@ -83,7 +83,7 @@ ONE transaction JSON (`{version, doc_root: <DOC_ROOT>, source_root: <REPO_ROOT>,
 - `add_question` `{target, content_file}` — S6 (the entry must carry `[§位置]` / `已检查` / `建议核实方向`)
 - `move_with_reference` `{sources:[{target, at, replace_match_file, reference_text_file}, ...]}` — S3
 - `promote_to_common` `{level, type, common_name, title_file, body_file, sources:[{target, at, replace_match_file, reference_text_file}, ...]}` — S4; `level ∈ repo|domain|global`
-  (or, transitionally, an `add_question` 建议公共化 on each subsystem); surface S4 in `promotions`
+  (or, if the user defers at the 2.5.b gate, an `add_question` 建议公共化 on each subsystem); surface S4 in `promotions`
 - Root-document impact → `update_root` items in `root_updates` (NOT in this transaction):
   `{kind, action:"add", ...}` with kind ∈ `subsystem_row{name,row}` | `mermaid_node{node_id,label}` |
   `mermaid_edge{from,to}` | `protocol_row{row}` | `aux_resource{bullet}` | `common_index_entry{name,级别,类型,说明}`
