@@ -67,7 +67,7 @@ Output no longer lives at a fixed `document/`; it resolves to:
 - `<DOC_ROOT>` = `<WIKI_BASE>/<DOMAIN>/<REPO_NAME>` (default `WIKI_BASE` = `D:\wiki`)
 - `<DOC_REL>` = `<DOMAIN>/<REPO_NAME>`
 
-Git operations are scoped to the wiki repo via `git -C <DOC_GIT_ROOT> ... -- <DOC_REL>/`. A `<WIKI_BASE>/.wiki.json` **domain registry** (committed, travels with the wiki repo) records the domain whitelist and per-repo→domain mappings. It is the authoritative source for `resolve-domain`.
+Git operations are scoped to the wiki repo via `git -C <DOC_GIT_ROOT> ... -- <DOC_REL>/`. A `<WIKI_BASE>/.wiki.json` **domain registry** (committed, travels with the wiki repo) records **only the domain whitelist** (`{"domains": [...]}`). `resolve-domain` derives a repo's domain from its **parent folder name** (`<WIKI scope>/<DOMAIN>/<REPO>`) and validates it against that whitelist — there is no per-repo→domain map, so two same-named repos under different domain folders never collide. (A legacy basename `repos` map is dropped on load and rewritten away on the next save.)
 
 - Both `SKILL.md` files MUST define `WIKI_BASE`, `REPO_ROOT`, `REPO_NAME`, `DOMAIN`, `DOC_ROOT`, `DOC_GIT_ROOT`, `DOC_REL` in a Phase 1.0 step that runs before any git check or file write/read. `DOMAIN` is resolved via the `resolve-domain` subcommand (see §8).
 - `<DOC_ROOT>` (and, where git commands are emitted, `<DOC_GIT_ROOT>` / `<DOC_REL>`) must be the ONLY way output paths are expressed in `subsystem-prompt.md`, `review-prompt.md`, `refine-subagent-prompt.md`, and `templates/root-architecture.md`. No literal `document/` output path may remain — the only allowed `document/` mentions are explanatory notes and the neutral `<doc-dir>` examples in `wiki-principles.md`.

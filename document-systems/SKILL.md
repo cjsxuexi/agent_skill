@@ -85,10 +85,10 @@ Generated docs live OUTSIDE the source repo, in a per-repo subfolder under a con
 python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE>
 ```
 
-   Parse the single JSON object printed:
-   - `{"status":"resolved","domain":<D>}` → `DOMAIN = <D>` (auto-resolved from `.wiki.json` or the repo's parent folder; the engine persists the mapping in `<WIKI_BASE>/.wiki.json`).
-   - `{"status":"no_registry","candidate":<C>}` → first-time setup. `AskUserQuestion`: 「未发现域配置。以父目录名 `<C>` 建立首个域并归入本仓？」 options 「是，建域 `<C>`（推荐）」/「自定义域名」. With the chosen `<d>`, run `python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <d>`; `DOMAIN = <d>`.
-   - non-zero exit `{"code":"E_UNKNOWN_DOMAIN","detail":{"candidate":<C>,"domains":[...]}}` → the parent `<C>` is not a known domain. `AskUserQuestion`: pick one of the existing `domains`, OR register `<C>` as a **new** domain. If the user picks "new domain `<C>`", ask a SECOND confirmation 「确认把 `<C>` 加入 domains 白名单？」 before persisting; then `resolve-domain … --set <chosen>`; `DOMAIN = <chosen>`. **No "keep this repo flat" option** — domains are mandatory.
+   Parse the single JSON object printed. **`DOMAIN` is the repo's parent folder name** (sources live at `<…>/<DOMAIN>/<REPO>`); the engine computes it and checks it against the whitelist — the skill only drives the prompts below.
+   - `{"status":"resolved","domain":<D>}` → `DOMAIN = <D>`.
+   - `{"status":"no_registry","candidate":<C>}` → first-time setup. `AskUserQuestion`: 「未发现域配置。以父目录名 `<C>` 建立首个域并归入本仓？」 options 「是，建域 `<C>`（推荐）」/「否（先把源码父文件夹改成想要的域名再重跑）」. On 「是」 run `python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <C>`; `DOMAIN = <C>`.
+   - non-zero exit `{"code":"E_UNKNOWN_DOMAIN","detail":{"candidate":<C>,"domains":[...]}}` → parent folder `<C>` is not a known domain. `AskUserQuestion`: confirm 「确认把 `<C>` 加入 domains 白名单？」 then `resolve-domain … --set <C>`; `DOMAIN = <C>`. To file the repo under an **existing** domain `<E>` instead, rename its parent folder to `<E>` and re-run — resolution is strictly by parent folder, the engine will not map folder `<C>` onto a different domain. **No flat option** — domains are mandatory.
    - If the user declines to establish/choose a domain, ABORT this run with a clear Chinese message (never silently fall back to a flat path).
 4. **Ensure the wiki base is a git repo** (the diff/restore review workflow depends on it):
    - Create `<WIKI_BASE>` if it does not exist.

@@ -18,7 +18,8 @@ Run **before M1–M5**. M1–M5 remain verbatim and fall inside the same governa
 `git -C <WIKI_BASE> diff` review + commit per completed step).
 
 1. **建域注册表** — run `/document-systems --init-domains`. This writes `<WIKI_BASE>/.wiki.json`
-   with the domain whitelist (e.g. `["old_project","fms"]`) and initialises an empty `repos` map.
+   with the domain whitelist (e.g. `["old_project","fms"]`). The registry holds **only** that
+   whitelist — there is no `repos` map; a repo's domain is derived from its parent folder name.
    `[engine]`
 
 2. **迁移现有 flat 仓目录** — for each existing flat repo directory at `<WIKI_BASE>/<repo>`, run:
@@ -35,11 +36,10 @@ Run **before M1–M5**. M1–M5 remain verbatim and fall inside the same governa
    ```
    to regenerate it with the three-level wording (`./_common/`, `../_common/`, `../../_common/`). `[engine]`
 
-4. **固化 repo→domain 映射** — for each migrated repo, run:
-   ```
-   resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <domain>
-   ```
-   This persists the `repo→domain` mapping into `.wiki.json`'s `repos` object. `[engine]`
+4. **确认域在白名单 + 源码归位** — resolution is by **parent folder name**, so there is no mapping
+   to "固化". Just ensure each repo's source sits under `<…>/<domain>/<repo>` and `<domain>` is in
+   the whitelist (`resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE>` returns `source:"parent"`;
+   if the parent folder is not yet a domain, add it once with `--set <domain>`). `[engine]`
 
 5. **生成域索引** — for each domain, run:
    ```

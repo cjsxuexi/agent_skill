@@ -38,19 +38,16 @@ abort and print to the user:
 You MUST NOT:
 
 - Modify any file or git state in the SOURCE repo; this skill only writes under `<DOC_ROOT>`
-- Have a subagent read source outside its DocKind boundary without escalation approval: a **strict**
-  target (subsystem `architecture.md`) reads only its own subsystem's source; a **light** target
-  (`_common` / ancillary doc) may read cross-subsystem within the repo but stops at jar / SDK
-  (code-wiki-conventions §1 / §2; common-conventions §9). Crossing a forbidden zone requires the
-  escalation gate (Phase 2.4.b)
-- **Bypass the engine to hand-edit any engine-governed document** (subsystem / `_common` / root
-  `architecture.md`) — every structural change goes through `wiki_engine apply`, never a manual
-  `Edit`. Both the subagent and the main agent act only through the engine: the subagent applies the
-  topic transaction; the main agent applies the writes it owns at the review gates (`update_root`,
-  promotions, §10 entries). There is no hand-edit exception.
-- Auto-cascade changes to affected subsystems' §5 — when a root-doc dependency edge changes, surface
-  the impact to the user but do not auto-edit other subsystems
-- Generate derived files (`.changes.md` / `.refine-log.md` / `.questions.md`) — wiki-principles §7
+- **Read-source boundary** — never let a subagent read source outside its DocKind boundary without
+  escalation approval; crossing a forbidden zone goes through the escalation gate (Phase 2.4.b). Full
+  strict/light read scope + escalation ladder: code-wiki-conventions §1 / §2 + common-conventions §9.
+- **Engine-only (no hand-edit)** — every structural change goes through `wiki_engine apply`, never a
+  manual `Edit`; this binds the subagent (topic transaction) and the main agent (the `update_root` /
+  promotion / §10 writes it owns at the review gates) alike. There is no hand-edit exception. *(A
+  wiki-refine invariant with no contract home — its full text lives only here.)*
+- **No auto-cascade** — when a root-doc dependency edge changes, surface the impact to the user but
+  do not auto-edit other subsystems' §5.
+- **No derived files** — wiki-principles §7.
 
 You MUST:
 
@@ -103,12 +100,7 @@ With `<ENGINE_CLI>` now available, resolve the wiki domain. Run:
 python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE>
 ```
 
-Parse the single JSON object printed:
-
-- `{"status":"resolved","domain":<D>}` → `DOMAIN = <D>` (auto-resolved from `.wiki.json` or the repo's parent folder; the engine persists the mapping in `<WIKI_BASE>/.wiki.json`).
-- `{"status":"no_registry","candidate":<C>}` → first-time setup. `AskUserQuestion`: 「未发现域配置。以父目录名 `<C>` 建立首个域并归入本仓？」 options 「是，建域 `<C>`（推荐）」/「自定义域名」. With the chosen `<d>`, run `python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <d>`; `DOMAIN = <d>`.
-- non-zero exit `{"code":"E_UNKNOWN_DOMAIN","detail":{"candidate":<C>,"domains":[...]}}` → the parent `<C>` is not a known domain. `AskUserQuestion`: pick one of the existing `domains`, OR register `<C>` as a **new** domain. If the user picks "new domain `<C>`", ask a SECOND confirmation 「确认把 `<C>` 加入 domains 白名单？」 before persisting; then `resolve-domain … --set <chosen>`; `DOMAIN = <chosen>`. **No "keep this repo flat" option** — domains are mandatory.
-- If the user declines to establish/choose a domain, ABORT this run with a clear Chinese message (never silently fall back to a flat path).
+Parse the single JSON object printed. **Handling is identical to `document-systems/SKILL.md` §3b "Resolve `DOMAIN`", which is the single source of truth** — `<安装根>` (resolved in 1.0.b) is document-systems' install dir, so `<安装根>\SKILL.md` §3b is always present; read it if unsure. In short: `DOMAIN` = the repo's parent folder name; on `resolved` take `<D>`; on `no_registry` / `E_UNKNOWN_DOMAIN`, `AskUserQuestion` to confirm building/whitelisting the parent-folder domain `<C>`, then re-run `resolve-domain … --set <C>`; to use a different domain, rename the parent folder; if the user declines, ABORT (never fall back to a flat path).
 
 Finalize: `DOC_ROOT = <WIKI_BASE>/<DOMAIN>/<REPO_NAME>`; `DOC_REL = <DOMAIN>/<REPO_NAME>`.
 
@@ -424,10 +416,12 @@ When Phase 1.3 detects `"mode": "single"`, the repo is documented as ONE `§1–
 
 ## What this skill does NOT do
 
-- Active architecture scanning — does not search for new subsystems, edges, or protocols. Root-architecture errors are surfaced only as the subagent passively encounters them during topic refinement, and only via `root_updates` for user confirmation.
-- Hand-editing a governed doc — every structural change goes through the engine (`apply`); the main agent applies `update_root` / promotions via the engine, never a manual `Edit`.
-- Auto-cascading edits to affected subsystems' §5 — surfaces the impact to the user, but never edits other subsystems automatically.
-- Derived files (`.changes.md` / `.refine-log.md` / `.questions.md`) — wiki-principles §7.
-- Reading outside the DocKind boundary without escalation — jar / SDK internals and other-subsystem source (for a strict target) require the 2.4.b escalation gate (code-wiki-conventions §1 / §2; common-conventions §9).
+Capability scope. The modification prohibitions are stated once in `## Hard Constraints` (+ the contracts it cites); these bullets are pointers:
+
+- **Active architecture scanning** — does not search for new subsystems, edges, or protocols. Root-architecture errors are surfaced only as the subagent passively encounters them during topic refinement, and only via `root_updates` for user confirmation. *(the one not-do not in Hard Constraints)*
+- **Hand-editing a governed doc** → Hard Constraints「Engine-only (no hand-edit)」.
+- **Auto-cascading edits to affected subsystems' §5** → Hard Constraints「No auto-cascade」.
+- **Generating derived files** → Hard Constraints「No derived files」/ wiki-principles §7.
+- **Reading outside the DocKind boundary without escalation** → Hard Constraints「Read-source boundary」/ code-wiki-conventions §1·§2 + common-conventions §9; the gate is Phase 2.4.b.
 
 This skill produces incremental, conversational refinements to existing architecture documentation only.

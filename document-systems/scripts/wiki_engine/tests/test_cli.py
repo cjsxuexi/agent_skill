@@ -157,8 +157,8 @@ class CliTest(unittest.TestCase):
         self.assertEqual(json.loads(out)["domain"], "fms")
         with open(os.path.join(wiki, ".wiki.json"), encoding="utf-8") as fh:
             reg = json.load(fh)
-        self.assertEqual(reg["repos"]["fms-server"], "fms")
-        self.assertIn("fms", reg["domains"])
+        self.assertIn("fms", reg["domains"])      # --set 只登记域白名单
+        self.assertNotIn("repos", reg)            # 不再写 repo→域映射
 
     def test_init_common_domain(self):
         wiki = os.path.join(self.tmp, "wiki")
