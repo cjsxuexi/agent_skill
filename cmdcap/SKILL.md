@@ -65,6 +65,17 @@ If missing:
 
 Needs `bash` on the target (normally present). Inside `cmdcap shell`, `cmdcap` is already on PATH.
 
+## Known targets — cmdcap launch path per host
+
+These bastion hosts are already provisioned. Use the fixed path below; do NOT re-run the install/locate steps. Step 1 of any capture is **host-specific** — pick the row matching the shell prompt the user will run on:
+
+| Host (prompt) | Step 1 launch command |
+|---|---|
+| `fabu@fabubak02` | `~/nb_port_prodprev/scripts/cmdcap shell` |
+| `fabu@fabu02` | `~/tools/cmdcap shell` |
+
+Inside the recorded shell, `cmdcap save` still works on its own (cmdcap is on PATH there) — only the initial `.../cmdcap shell` needs the full path. If unsure which host, give both rows.
+
 ## Reading the result
 
 Read the **newest** file in `C:\Users\admin\Downloads\`. Recursive glob is unreliable on this machine — list by modified time instead:
