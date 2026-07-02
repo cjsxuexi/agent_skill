@@ -1,0 +1,27 @@
+{
+  "_comment": "Merge ONLY this hooks block into %USERPROFILE%\\.claude\\settings.json (keep all other keys, especially secrets, untouched). Resolve %USERPROFILE% in the two commands to the real absolute path when writing them (hook commands may not expand env vars). To disable auto-record: delete this hooks block or restore your settings.json backup.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 \"%USERPROFILE%\\.claude\\skills\\prod-issue-quickref\\scripts\\quickref_hook.py\" --arm"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 \"%USERPROFILE%\\.claude\\skills\\prod-issue-quickref\\scripts\\quickref_hook.py\" --stop"
+          }
+        ]
+      }
+    ]
+  }
+}

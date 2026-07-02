@@ -200,6 +200,7 @@ every other line (trimmed) is one glob pattern. Keep it machine-parseable.
 ```ignore-globs
 issue/**
 whole_architecture.md
+生产问题速查.md
 spec/**
 **/.review.md
 ```
