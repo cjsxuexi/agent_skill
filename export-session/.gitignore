@@ -1,0 +1,9 @@
+# AI 自维护的运行期自评记录(决策 #11):随分析不断增长,不进版本库。
+export-session-eval-log.md
+
+# Python / pytest 构建产物(scripts/ 引擎的运行期缓存,不进版本库)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.venv-*/
