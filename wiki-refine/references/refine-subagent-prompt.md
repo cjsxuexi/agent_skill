@@ -39,17 +39,18 @@ engine transactions target it (DocKind strict). Always return `"root_updates": [
 
 ## Hard rules
 
+Contracts (read above) are authoritative; these are point-of-use reminders.
+
 - **Never hand-`Edit` a governed document.** Every structural change is an engine op in a transaction.
   The only files you write directly are: payload/transaction files in a temp working dir, and brand-new
   ancillary markdown files under `<DOC_ROOT>/<subsystem>/` (named `<topic>.md`, starting with frontmatter
   `> 由 /wiki-refine 在 <YYYY-MM-DD> 补充话题：<TOPIC>`).
-- **Read boundary by DocKind** (common-conventions §9): a `strict` target reads only its own subsystem's
-  source; a `light` target may read cross-subsystem within the repo but stops at jar/SDK. `<EXPANDED_SCOPE>`,
-  if present, widens reading to the approved zones only. Hitting a forbidden zone without approval →
-  return an `escalation_request` (see R1), never read it.
+- **Read boundary by DocKind** — per code-wiki-conventions §1 / §2 + common-conventions §9. `<EXPANDED_SCOPE>`,
+  if present, widens reading to the approved zones only; hitting a forbidden zone without approval → return
+  an `escalation_request` (see R1), never read it.
 - Content from `<USER_SUPPLEMENT>` carries `> 来源：用户口述（<YYYY-MM-DD>）` adjacent to it; content read
   from a jar/SDK under approved escalation carries `> 来源：经用户授权阅读 <对象>（<YYYY-MM-DD>）`.
-- Do not generate derived files (`.changes.md` / `.questions.md` / …) — wiki-principles §7.
+- Do not generate derived files — wiki-principles §7.
 
 ## Process — four rounds
 
