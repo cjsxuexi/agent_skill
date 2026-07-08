@@ -295,10 +295,18 @@ def build_parser():
 def main(argv=None):
     parser_ = build_parser()
     try:
-        args = parser_.parse_args(argv)
+        args, unknown = parser_.parse_known_args(argv)
     except SystemExit as exc:
         # _JsonArgumentParser.error already emitted JSON; --help exits 0 (help on stdout)
         return exc.code if isinstance(exc.code, int) else 2
+    if unknown:
+        print(
+            "[wiki_engine] 提示：以下参数当前子命令（{}）不支持，已忽略：{}"
+            " — 执行 `wiki_engine {} --help` 查看支持的参数".format(
+                getattr(args, "cmd", "?"), " ".join(unknown), getattr(args, "cmd", "?")
+            ),
+            file=sys.stderr,
+        )
     if not getattr(args, "func", None):
         _emit({"code": "E_USAGE", "message_zh": "缺少子命令"})
         return 2
