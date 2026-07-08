@@ -72,7 +72,10 @@ Generated docs live OUTSIDE the source repo, in a per-repo subfolder under a con
    - Options: `D:\wiki（默认，推荐）` and `自定义路径`. A custom absolute path is taken from the user's free-text ("Other") reply; the default option means `D:\wiki`.
    - Persist the result: write `{"wiki_base": "<chosen absolute path>"}` to `%USERPROFILE%\.document-systems.json`.
 3. **Derive the path set** (used by every later phase; the literal `document/` is no longer used):
-   - `REPO_ROOT` = output of `git rev-parse --show-toplevel` when inside a git work tree, else the current directory.
+   - `REPO_ROOT` = output of `git rev-parse --show-toplevel` when inside a git work tree. If that fails (current directory is not inside any git work tree), scan the **immediate subdirectories** of the current directory for those that contain a `.git` entry:
+     - **None found** → `REPO_ROOT` = the current directory (original fallback).
+     - **Exactly one found** → `REPO_ROOT` = that subdirectory.
+     - **Multiple found** → `AskUserQuestion`: 「当前目录不是 git 仓库。检测到以下子系统，请选择要操作的目标：」 listing each subdirectory name; set `REPO_ROOT` to the chosen subdirectory. If the user declines or gives no valid answer, ABORT.
    - `REPO_NAME` = the basename of `REPO_ROOT`.
    - `DOMAIN` = resolved in step 3b below. The wiki is split into 领域 / domains (e.g. `old_project`, `fms`), each holding its own repos. **Domains are mandatory — there is no flat layout.**
    - `DOC_ROOT` = `<WIKI_BASE>/<DOMAIN>/<REPO_NAME>` — absolute folder holding this repo's docs.
@@ -88,7 +91,7 @@ python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE>
    Parse the single JSON object printed. **`DOMAIN` is the repo's parent folder name** (sources live at `<…>/<DOMAIN>/<REPO>`); the engine computes it and checks it against the whitelist — the skill only drives the prompts below.
    - `{"status":"resolved","domain":<D>}` → `DOMAIN = <D>`.
    - `{"status":"no_registry","candidate":<C>}` → first-time setup. `AskUserQuestion`: 「未发现域配置。以父目录名 `<C>` 建立首个域并归入本仓？」 options 「是，建域 `<C>`（推荐）」/「否（先把源码父文件夹改成想要的域名再重跑）」. On 「是」 run `python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <C>`; `DOMAIN = <C>`.
-   - non-zero exit `{"code":"E_UNKNOWN_DOMAIN","detail":{"candidate":<C>,"domains":[...]}}` → parent folder `<C>` is not a known domain. `AskUserQuestion`: confirm 「确认把 `<C>` 加入 domains 白名单？」 then `resolve-domain … --set <C>`; `DOMAIN = <C>`. To file the repo under an **existing** domain `<E>` instead, rename its parent folder to `<E>` and re-run — resolution is strictly by parent folder, the engine will not map folder `<C>` onto a different domain. **No flat option** — domains are mandatory.
+   - non-zero exit `{"code":"E_UNKNOWN_DOMAIN","detail":{"candidate":<C>,"domains":[...]}}` → parent folder `<C>` is not a registered domain. The candidate `<C>` may be a meaningless container directory (e.g. `code`) rather than an intentional domain name — do **not** silently default to it. `AskUserQuestion`: 「父目录 `<C>` 不在域白名单中（已有域：`<domains>`）。请输入要归入的域名（留空则新建域 `<C>`）：」. Let `<D>` = the user's trimmed input if non-empty, otherwise `<D> = <C>`; run `python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE> --set <D>`; `DOMAIN = <D>`. **No flat option** — domains are mandatory.
    - If the user declines to establish/choose a domain, ABORT this run with a clear Chinese message (never silently fall back to a flat path).
 4. **Ensure the wiki base is a git repo** (the diff/restore review workflow depends on it):
    - Create `<WIKI_BASE>` if it does not exist.
