@@ -112,13 +112,13 @@ def main(argv=None):
     pe.add_argument("--jsonl")
     pe.add_argument("--session-id")
     pe.add_argument("--projects-root")
-    pe.add_argument("--export-root", required=True)
+    pe.add_argument("--export-root", default=config.DEFAULT_EXPORT_ROOT)
     pe.add_argument("--exported-at", default=None)
     pe.add_argument("--no-raw", action="store_true")
     pe.add_argument("--truncate-at", type=int, default=DEFAULT_TRUNCATE_AT)
 
     pi = sub.add_parser("index", help="recompute INDEX.md / index.json from summaries")
-    pi.add_argument("--export-root", required=True)
+    pi.add_argument("--export-root", default=config.DEFAULT_EXPORT_ROOT)
     pi.add_argument("--exported-at", default=None)
 
     pc = sub.add_parser("catalog", help="list top-level sessions under a projects root")
@@ -133,7 +133,7 @@ def main(argv=None):
                     help="read a SessionEnd hook JSON payload from stdin for jsonl/session_id")
     pa.add_argument("--issue-id", help="comment path: resolve session_id from `multica issue runs`")
     pa.add_argument("--projects-root")
-    pa.add_argument("--export-root", required=True)
+    pa.add_argument("--export-root", default=config.DEFAULT_EXPORT_ROOT)
     pa.add_argument("--wiki-root", default=config.DEFAULT_WIKI_ROOT)
     pa.add_argument("--trigger", default="session_end_hook",
                     choices=["comment", "session_end_hook", "schedule_poll"])
