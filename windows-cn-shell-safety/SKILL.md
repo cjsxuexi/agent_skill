@@ -95,8 +95,6 @@ If a stubborn `UnicodeEncodeError: 'gbk' codec ...` still surfaces (rare — usu
 
 ## Reference
 
-Original incident log: `D:\code\fabusurfer\document\skill_suggest.md` *(removed ~2026-06 — fabusurfer's `document/` dir was deleted from the repo; the file no longer exists at any path. The rules in this skill are now the source of truth.)*
-
 ### multica CLI 发评论：固定用 Write tool + PowerShell
 
 本项目已固化的评论流程（防止 PowerShell 5.1 piping 丢中文）：
