@@ -16,7 +16,7 @@
 选型原则：
 
 - **非互斥，可并用**。一次故障排查常见组合：fms-log 锚定现象 → gitnexus-debugging 定位代码 → fms-diagnose 补系统横断面（见 §6）。
-- **全部只读**。六个工具都只 SELECT / SCAN / 查日志 / 查代码索引，取证过程不写库、不改缓存、不动代码。
+- **全部只读**。六个工具都只 SELECT / SCAN / 查日志 / 查代码索引，取证过程不写库、不改缓存、不动代码；凭证不写入 wiki、Agent 对话或日志，命令示例只记录入口与参数形状。
 - **优先触发对应 skill**。六个工具均为已安装 skill：触发后完整说明（环境差异、凭据位置、最新注意事项）会进入上下文。本文是选型与核心语法速查，更深的领域细节以各 skill 自带文档为准。
 
 ### 1.1 命令中的路径占位符
@@ -105,15 +105,16 @@ python -X utf8 "<SKILLS_ROOT>\fms-diagnose\scripts\fms_diagnose.py" --port psa -
 
 | `--port` | 环境 | 日志源 |
 |---|---|---|
-| `np` | NP 测试 | k8s：模块 pod 内 `/logs` 文件；另可加 `--loki` 查推送到 Loki 的历史日志（仅此港口值支持） |
+| `np` | NP 测试 | k8s：模块 pod 内 `/logs` 文件；另可加 `--loki` 查推送到 Loki 的历史日志 |
 | `np_prod` | NP 生产 | k8s：模块 pod 内 `/logs` 文件（不支持 `--loki`） |
+| `dg` | DG 测试 | raw Loki：同 NP Loki endpoint，namespace=`dg-fms`（仅支持 `--loki`） |
 | `psa` | PSA 测试 | Grafana/Loki |
 | `psa_prod` | PSA 生产 | Grafana/Loki |
 | `nb` | NB 测试 | 直连 SSH 读云控 VM 上的日志文件 |
 | `nb_uat` | NB UAT | 直连 SSH（uat 目录） |
 | `yz` | 甬舟测试 | Grafana/Loki（app 为 port-\*） |
 
-> 注意与 fms-diagnose 区分：fms-diagnose 的 `--port` 只有 4 个取值（np/np_prod/psa/psa_prod），fms-log 有上表 7 个。个别环境的临时可用性问题（如某生产 Loki 后端故障）以 fms-log skill 文档的最新注意事项为准。
+> 注意与 fms-diagnose 区分：fms-diagnose 的 `--port` 只有 4 个取值（np/np_prod/psa/psa_prod），fms-log 有上表 8 个。个别环境的临时可用性问题（如某生产 Loki 后端故障）以 fms-log skill 文档的最新注意事项为准。
 
 ### 3.2 关键参数
 
@@ -130,7 +131,7 @@ python -X utf8 "<SKILLS_ROOT>\fms-diagnose\scripts\fms_diagnose.py" --port psa -
 | `--context` | NP/NB grep 上下文行数（`grep -C`） |
 | `--pod-logs` | NP：改用 `kubectl logs` 取实时 stdout（而非读 `/logs` 文件） |
 | `--previous` | NP 配合 `--pod-logs`：取 crash 前的容器 stdout |
-| `--loki` | 仅 `--port np`：查推送到 Loki 的日志（历史 / 跨副本 / 按时间范围） |
+| `--loki` | `--port np` / `--port dg`：查推送到 raw Loki 的日志（历史 / 跨副本 / 按时间范围） |
 
 ### 3.3 工作流：先 `--list`，再实际查
 
@@ -152,6 +153,10 @@ python -X utf8 "<SKILLS_ROOT>\fms-log\scripts\fms_log.py" --port np_prod --modul
 # NP（仅测试）：查 Loki 历史日志（--grep 为子串）
 python -X utf8 "<SKILLS_ROOT>\fms-log\scripts\fms_log.py" --port np --loki --module fms-system --grep "ERROR" --minutes 60
 
+# DG：同 NP raw Loki endpoint，namespace=dg-fms；先列 app，再查模块
+python -X utf8 "<SKILLS_ROOT>\fms-log\scripts\fms_log.py" --port dg --loki --list --minutes 60
+python -X utf8 "<SKILLS_ROOT>\fms-log\scripts\fms_log.py" --port dg --loki --app fms-vehicle-bridge --minutes 30 --lines 200
+
 # PSA：按 app 查 Loki（--grep 为子串），可回溯分钟
 python -X utf8 "<SKILLS_ROOT>\fms-log\scripts\fms_log.py" --port psa --app fms-jobflow --grep "No handler found" --minutes 30
 
@@ -172,7 +177,7 @@ python -X utf8 "<SKILLS_ROOT>\fms-log\scripts\fms_log.py" --port nb_uat --relpat
 
 ### 4.2 标准序列（在 Luna 终端内按序执行）
 
-1. `cmdcap shell` — 每会话执行一次，进入录制子 shell（首次使用的新目标机需先安装：把 cmdcap skill 目录 `dist\` 下的预编译二进制上传到目标机，步骤见 cmdcap skill 文档；已配置过的主机用该文档「Known targets」表中的固定启动路径）。
+1. `cmdcap shell` — 每会话执行一次，进入录制子 shell（首次使用的新目标机需先安装：把 cmdcap skill 目录 `dist\` 下的预编译二进制上传到目标机，步骤见 cmdcap skill 文档；已配置过的主机用下表固定启动路径）。
 2. 正常执行诊断命令，**每条命令独立一行**。
 3. `cmdcap save` — **单独一行**，把本批新输出刷到文件并打印文件路径。
 4. 用户经 Luna 文件管理器把该文件下载到本机 `~\Downloads\`。
@@ -183,6 +188,15 @@ Get-ChildItem "$env:USERPROFILE\Downloads\cap-*.txt" | Sort-Object LastWriteTime
 ```
 
 6. 全部取证结束后在录制 shell 内 `exit` 结束录制。
+
+已知目标机的启动路径只记录命令入口，不记录凭证：
+
+| Host (prompt) | Step 1 launch command |
+|---|---|
+| `fabu@fabubak02` | `~/nb_port_prodprev/scripts/cmdcap shell` |
+| `fabu@fabu02` | `~/tools/cmdcap shell` |
+
+若不确定当前 Luna 终端是哪台主机，先看 shell prompt；仍不确定时同时给两条候选启动命令，让人工按 prompt 选择。
 
 ### 4.3 硬性规则
 
@@ -198,6 +212,7 @@ Get-ChildItem "$env:USERPROFILE\Downloads\cap-*.txt" | Sort-Object LastWriteTime
 - `cmdcap save` **不带任何命令参数**——它是刷出动作，不是命令包装器（❌ `cmdcap save df -h`）。
 - `save` 在录制 shell **内**执行，不能放在 `exit` 之后。
 - `save` 是**增量**的：每次只返回上次 save 之后的新轮次；要重取旧轮次用 `--from/--to`。
+- cmdcap 只作为 fms-log / fms-diagnose 覆盖不到时的兜底取证入口；不要把 Nacos/JumpServer 查询能力重复沉淀成本人脚本，也不要把账号、token、密钥、内网凭据写进命令、wiki、日志或 Agent 对话。
 
 ### 4.4 save 选项与边界
 
