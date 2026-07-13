@@ -73,8 +73,11 @@ These bastion hosts are already provisioned. Use the fixed path below; do NOT re
 |---|---|
 | `fabu@fabubak02` | `~/nb_port_prodprev/scripts/cmdcap shell` |
 | `fabu@fabu02` | `~/tools/cmdcap shell` |
+| `fabu@fabu04` | `~/tools/cmdcap shell` |
 
 Inside the recorded shell, `cmdcap save` still works on its own (cmdcap is on PATH there) — only the initial `.../cmdcap shell` needs the full path. If unsure which host, give both rows.
+
+**`fabu@fabu04` download caveat:** its Luna file manager only exposes `/tmp`, but cmdcap writes to `/home/fabu/cmdcap-out/`. Symlink the output dir into `/tmp` once so every future capture is downloadable: `ln -sfn /home/fabu/cmdcap-out /tmp/cmdcap-out` (then download from `/tmp/cmdcap-out/`). If Luna won't download through the symlink, `cp` the specific `cap-*.txt` into `/tmp/` instead.
 
 ## Reading the result
 
