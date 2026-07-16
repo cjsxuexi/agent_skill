@@ -108,12 +108,15 @@ python -X utf8 <ENGINE_CLI> resolve-domain --repo <REPO_ROOT> --wiki <WIKI_BASE>
 | 第二层（域级，扩大） | `<WIKI_BASE>\<DOMAIN>` |
 | 第三层（全 wiki，兜底；无法确定 DOMAIN 时也走这层） | `<WIKI_BASE>` |
 
-**命令 ④ — 宽检索**（关键词扫全部 architecture.md）：
+**命令 ④ — 宽检索**（关键词扫 wiki 树内全部知识 md，按路径正则排除噪声）：
 
 ```powershell
-Get-ChildItem "<检索根>" -Recurse -Filter architecture.md |
+Get-ChildItem "<检索根>" -Recurse -Filter *.md |
+  Where-Object { $_.FullName -notmatch '\\\.|\\spec\\|\\_(?!common\\)|\\index\.md$' } |
   Select-String -Pattern "<关键词>" -Encoding UTF8
 ```
+
+覆盖面：`architecture.md` 之外，还命中自定义名知识文档（如 `alarm-architecture.md`、`ops-diagnostics-runbook.md`）、`whole_architecture.md` 仓级总览、`issue\**` 排障笔记、`_common\*.md` 术语表、`生产问题速查.md`。排除项（`-notmatch` 四段依次为）：`.` 开头的文件/目录（`.review.md`、`.claude\`）、`spec\` 需求实现工作区、`_common` 以外的 `_*` 目录（`_meta\`）、`index.md` 域级导航页。
 
 **命令 ⑤ — 节定向**（按任务类型直达目标节；`50` 为向后取行数，按节长调整）：
 

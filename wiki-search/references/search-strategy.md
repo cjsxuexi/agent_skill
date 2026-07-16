@@ -143,18 +143,23 @@ cat "<DOC_ROOT>/生产问题速查.md"
 
 约定：PowerShell 读文件一律带 `-Encoding UTF8`；Git Bash 中路径用正斜杠形式（如 `D:/wiki/...` 或 `/d/wiki/...`，示例值）。
 
-### 5.1 宽检索：关键词扫全部 architecture.md
+### 5.1 宽检索：关键词扫 wiki 树内全部知识 md（排除噪声）
 
-`<检索根>` 取 §3 对应层的根目录。
+`<检索根>` 取 §3 对应层的根目录。扫描对象是 wiki 树内全部 `*.md` 知识文档——除 `architecture.md` 外，还包括自定义名知识文档（如 `alarm-architecture.md`、`business-reporting-overview.md`、`runbook-vehicle-location-ws.md`）、`whole_architecture.md` 仓级总览、`issue\**` 排障笔记、`_common\*.md` 术语表、`生产问题速查.md`；同时按路径规则排除四类噪声：① `.` 开头的文件/目录（`.review.md`、`.analysis.md`、`.claude\`）、② `spec\` 需求实现工作区、③ `_common` 以外的 `_*` 目录（如 `_meta\`）、④ `index.md` 域级导航页。
 
 ```powershell
-Get-ChildItem "<检索根>" -Recurse -Filter architecture.md |
+Get-ChildItem "<检索根>" -Recurse -Filter *.md |
+  Where-Object { $_.FullName -notmatch '\\\.|\\spec\\|\\_(?!common\\)|\\index\.md$' } |
   Select-String -Pattern "<关键词>" -Encoding UTF8
 ```
 
 ```bash
-grep -rn --include=architecture.md "<关键词>" "<检索根>"
+grep -rn --include='*.md' --exclude='.*' --exclude='index.md' \
+  --exclude-dir='.*' --exclude-dir='spec' --exclude-dir='_meta' \
+  "<关键词>" "<检索根>"
 ```
+
+两版语义一致（已对全 wiki 核对选中文件集合相同）。差异：Git Bash 版的 `_*` 目录排除是逐个枚举的（当前只有 `_meta`），wiki 树新增 `_common` 以外的 `_*` 目录时需同步补 `--exclude-dir`；PowerShell 版的 `\\_(?!common\\)` 自动覆盖，无需维护。
 
 ### 5.2 节定向：定位 `^## N.` 起始行并取后续若干行
 
@@ -206,13 +211,16 @@ sed -n '/^## <N>\./,/^## [0-9]/p' "<DOC_ROOT>/<子系统>/architecture.md" | gre
 1. **叠加关键词（AND）**：两个关键词同行才保留。
 
    ```powershell
-   Get-ChildItem "<检索根>" -Recurse -Filter architecture.md |
+   Get-ChildItem "<检索根>" -Recurse -Filter *.md |
+     Where-Object { $_.FullName -notmatch '\\\.|\\spec\\|\\_(?!common\\)|\\index\.md$' } |
      Select-String -Pattern "<关键词1>" -Encoding UTF8 |
      Where-Object { $_.Line -match "<关键词2>" }
    ```
 
    ```bash
-   grep -rn --include=architecture.md "<关键词1>" "<检索根>" | grep "<关键词2>"
+   grep -rn --include='*.md' --exclude='.*' --exclude='index.md' \
+     --exclude-dir='.*' --exclude-dir='spec' --exclude-dir='_meta' \
+     "<关键词1>" "<检索根>" | grep "<关键词2>"
    ```
 
 2. **按任务类型直达目标节**：对照 §4 映射表确定 `<N>`，改用 §5.3「限某节」检索，只在目标节内匹配关键词。
