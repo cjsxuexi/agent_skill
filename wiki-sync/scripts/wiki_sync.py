@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""wiki_sync — deterministic collection layer for the nightly wiki sync.
+
+Subcommands (always run with `python -X utf8`):
+
+  init        Ensure D:\\wiki\\.wiki-sync.json exists and every enabled repo has a
+              baseline last_synced_sha (= current origin/<branch> HEAD). Never
+              overwrites an existing non-null baseline unless --force.
+  collect     For each enabled repo: fetch origin/<branch>, range-diff
+              last_synced_sha..origin/<branch> in ONE shot, map changed files to
+              wiki subsystems via <WIKI_BASE>/<domain>/<repo>/.progress.json,
+              classify noise / structural signals, and write one changeset JSON
+              per repo plus a _run.json summary. Read-only w.r.t. source repos
+              (fetch only; never touches the working tree).
+  materialize Ensure the persistent linked worktree <sync_root>/<domain>/<repo>
+              exists and is detached at the given SHA (defaults to the repo's
+              fetched origin/<branch>). Never modifies the D:\\code checkout.
+  advance     Set a repo's last_synced_sha in the config (call ONLY after the
+              wiki commit for that repo succeeded).
+  status      Print per-repo state (baseline, branch, enabled).
+
+All JSON files are written UTF-8 (no BOM), ensure_ascii=False. .progress.json is
+read with utf-8-sig because PowerShell-written files may carry a BOM.
+"""
+
+import argparse
+import fnmatch
+import io
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone, timedelta
+
+CST = timezone(timedelta(hours=8))
+
+DEFAULT_CONFIG = r"D:\wiki\.wiki-sync.json"
+
+NOISE_PATTERNS = [
+    "*.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "*.min.js", "*.min.css", "*.map",
+    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg", "*.webp",
+    "*.jar", "*.class", "*.exe", "*.dll", "*.so", "*.zip", "*.tar.gz",
+    "*.ttf", "*.woff", "*.woff2", "*.eot",
+    ".idea/*", "*.iml", ".vscode/*",
+    "node_modules/*", "dist/*", "build/*", "target/*", "out/*",
+]
+
+FETCH_TIMEOUT = 300
+GIT_TIMEOUT = 120
+
+# top-level dirs that are never code modules — excluded from the "new module"
+# structural signal (their files still appear in `unmapped` for the report)
+NON_MODULE_DIRS = {"docs", "doc", "sql", "scripts", "spec", "specs",
+                   ".github", ".gitlab", "deploy", "ci"}
+
+
+def now_iso():
+    return datetime.now(CST).isoformat(timespec="seconds")
+
+
+def run_git(repo, args, timeout=GIT_TIMEOUT, check=True):
+    """Run git in `repo`, return (rc, stdout_str). Output decoded utf-8/replace."""
+    cmd = ["git", "-C", repo, "-c", "core.quotepath=false"] + args
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("git timeout: %s" % " ".join(args))
+    out = p.stdout.decode("utf-8", errors="replace")
+    err = p.stderr.decode("utf-8", errors="replace")
+    if check and p.returncode != 0:
+        raise RuntimeError("git %s failed (rc=%d): %s" % (args[0], p.returncode, err.strip()[:500]))
+    return p.returncode, out
+
+
+def load_config(path):
+    with io.open(path, encoding="utf-8-sig") as f:
+        return json.load(f)
+
+
+def save_config(path, cfg):
+    """Atomic write: temp file in same dir, then os.replace."""
+    cfg["updated_at"] = now_iso()
+    d = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
+    try:
+        with io.open(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, path)
+    except Exception:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def repo_key(r):
+    return "%s/%s" % (r["domain"], r["repo"])
+
+
+def find_repo(cfg, key):
+    for r in cfg["repos"]:
+        if repo_key(r) == key:
+            return r
+    raise SystemExit("repo not in config: %s" % key)
+
+
+def source_path(cfg, r):
+    return os.path.join(cfg["code_root"], r["domain"], r["repo"])
+
+
+def worktree_path(cfg, r):
+    return os.path.join(cfg["sync_root"], r["domain"], r["repo"])
+
+
+def fetch_head(src, branch):
+    """Fetch origin/<branch>; return the fetched tip SHA (via FETCH_HEAD)."""
+    run_git(src, ["fetch", "origin", branch], timeout=FETCH_TIMEOUT)
+    _, out = run_git(src, ["rev-parse", "FETCH_HEAD"])
+    return out.strip()
+
+
+def remote_tip_no_fetch(src, branch):
+    rc, out = run_git(src, ["rev-parse", "refs/remotes/origin/" + branch], check=False)
+    return out.strip() if rc == 0 else None
+
+
+def is_noise(path, patterns):
+    p = path.replace("\\", "/")
+    for pat in patterns:
+        if fnmatch.fnmatch(p, pat) or fnmatch.fnmatch(os.path.basename(p), pat):
+            return True
+        # directory-prefix patterns like "dist/*" should also match "web/dist/x.js"
+        if pat.endswith("/*") and ("/" + pat[:-1]) in ("/" + p):
+            return True
+    return False
+
+
+def load_doc_manifest(cfg, r):
+    """Return (doc_mode, [(subsystem_name, norm_path_prefix)]).
+
+    doc_mode: 'single' only when .progress.json explicitly says so; anything
+    else (multi, missing mode key, legacy) is treated as multi, matching
+    /document-systems' own rule. Missing file → (None, [])."""
+    pj = os.path.join(cfg["wiki_base"], r["domain"], r["repo"], ".progress.json")
+    if not os.path.exists(pj):
+        return None, []
+    with io.open(pj, encoding="utf-8-sig") as f:
+        d = json.load(f)
+    if d.get("mode") == "single":
+        return "single", []
+    subs = []
+    for s in d.get("manifest", {}).get("subsystems", []):
+        p = s.get("path", s["name"]).replace("\\", "/").strip("/")
+        subs.append((s["name"], p))
+    # longest prefix first so nested paths win
+    subs.sort(key=lambda x: len(x[1]), reverse=True)
+    return "multi", subs
+
+
+def map_file(path, subs):
+    p = path.replace("\\", "/")
+    for name, prefix in subs:
+        if p == prefix or p.startswith(prefix + "/"):
+            return name
+    return None
+
+
+def collect_repo(cfg, r, no_fetch=False):
+    key = repo_key(r)
+    src = source_path(cfg, r)
+    cs = {
+        "domain": r["domain"], "repo": r["repo"], "branch": r["branch"],
+        "source_path": src, "worktree_path": worktree_path(cfg, r),
+        "from_sha": r.get("last_synced_sha"), "to_sha": None,
+        "status": None, "history_rewritten": False, "commit_count": 0,
+        "messages": [], "doc_mode": None, "subsystems": {}, "unmapped": [],
+        "noise_count": 0, "noise_sample": [], "structural": [], "error": None,
+        "collected_at": now_iso(),
+    }
+    try:
+        if not os.path.isdir(os.path.join(src, ".git")):
+            raise RuntimeError("source repo missing or not a git repo: %s" % src)
+        if no_fetch:
+            new = remote_tip_no_fetch(src, r["branch"])
+            if not new:
+                raise RuntimeError("no remote-tracking ref for origin/%s (run without --no-fetch)" % r["branch"])
+        else:
+            new = fetch_head(src, r["branch"])
+        cs["to_sha"] = new
+        last = r.get("last_synced_sha")
+        if not last:
+            cs["status"] = "needs_baseline"
+            return cs
+        if last == new:
+            cs["status"] = "no_change"
+            return cs
+
+        rc, _ = run_git(src, ["merge-base", "--is-ancestor", last, new], check=False)
+        cs["history_rewritten"] = rc != 0
+
+        _, cnt = run_git(src, ["rev-list", "--count", "%s..%s" % (last, new)], check=False)
+        cs["commit_count"] = int(cnt.strip() or 0)
+
+        _, msgs = run_git(src, ["log", "--no-merges", "--format=%h %s", "%s..%s" % (last, new)], check=False)
+        cs["messages"] = [m for m in msgs.splitlines() if m.strip()][:200]
+
+        # ONE whole-range comparison (net change), never per-commit
+        _, ns = run_git(src, ["diff", "--name-status", "-M50", last, new])
+        _, num = run_git(src, ["diff", "--numstat", last, new])
+        stats = {}
+        for line in num.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                a, d, p = parts[0], parts[1], parts[-1]
+                stats[p] = (0 if a == "-" else int(a), 0 if d == "-" else int(d))
+
+        doc_mode, subs = load_doc_manifest(cfg, r)
+        cs["doc_mode"] = doc_mode
+        patterns = cfg.get("noise_patterns", NOISE_PATTERNS)
+        noise = []
+        seen_new_topdirs = set()
+        for line in ns.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            op = parts[0]
+            path = parts[-1]  # rename lines: R<score>\told\tnew → take new
+            if is_noise(path, patterns):
+                noise.append(path)
+                continue
+            adds, dels = stats.get(path, (0, 0))
+            entry = [op[0], path, adds, dels]
+            if doc_mode == "single":
+                bucket = cs["subsystems"].setdefault(r["repo"], {"files": [], "total_adds": 0, "total_dels": 0})
+            else:
+                name = map_file(path, subs)
+                if name is None:
+                    cs["unmapped"].append(entry)
+                    if op[0] == "A" and "/" in path.replace("\\", "/"):
+                        seen_new_topdirs.add(path.replace("\\", "/").split("/")[0])
+                    continue
+                bucket = cs["subsystems"].setdefault(name, {"files": [], "total_adds": 0, "total_dels": 0})
+            bucket["files"].append(entry)
+            bucket["total_adds"] += adds
+            bucket["total_dels"] += dels
+
+        cs["noise_count"] = len(noise)
+        cs["noise_sample"] = noise[:20]
+
+        # structural signals (multi mode only; single mode has one doc for everything)
+        if doc_mode == "multi":
+            known_tops = {p.split("/")[0] for _, p in subs}
+            skip = set(cfg.get("non_module_dirs", [])) | NON_MODULE_DIRS
+            new_modules = sorted(t for t in seen_new_topdirs
+                                 if t not in known_tops and t.lower() not in skip)
+            for t in new_modules:
+                cs["structural"].append("new top-level dir not in manifest: %s/" % t)
+            root_pom = [e for e in cs["unmapped"] if e[1].replace("\\", "/") == "pom.xml"]
+            if root_pom:
+                cs["structural"].append("root pom.xml changed (module list may have changed)")
+        if doc_mode is None:
+            cs["structural"].append("no .progress.json under wiki for this repo — run /document-systems first")
+        if cs["history_rewritten"]:
+            cs["structural"].append("history rewritten (force-push?): %s is not an ancestor of %s" % (last[:7], new[:7]))
+
+        cs["status"] = "changes"
+        return cs
+    except Exception as e:
+        cs["status"] = "error"
+        cs["error"] = str(e)
+        return cs
+
+
+def cmd_init(args):
+    if os.path.exists(args.config) and not args.force:
+        cfg = load_config(args.config)
+    else:
+        cfg = None
+    if cfg is None:
+        raise SystemExit(
+            "config not found: %s\n"
+            "init expects the config file to exist with the repo list (create it once, "
+            "last_synced_sha may be null); init only fills in null baselines." % args.config)
+    changed = 0
+    results = []
+    for r in cfg["repos"]:
+        key = repo_key(r)
+        if not r.get("enabled", True):
+            results.append({"repo": key, "status": "disabled"})
+            continue
+        if r.get("last_synced_sha") and not args.force:
+            results.append({"repo": key, "status": "kept", "sha": r["last_synced_sha"]})
+            continue
+        try:
+            sha = fetch_head(source_path(cfg, r), r["branch"])
+            r["last_synced_sha"] = sha
+            r["baselined_at"] = now_iso()
+            changed += 1
+            results.append({"repo": key, "status": "baselined", "sha": sha})
+        except Exception as e:
+            results.append({"repo": key, "status": "error", "error": str(e)})
+    if changed:
+        save_config(args.config, cfg)
+    print(json.dumps({"config": args.config, "baselined": changed, "repos": results},
+                     ensure_ascii=False, indent=2))
+
+
+def cmd_collect(args):
+    cfg = load_config(args.config)
+    os.makedirs(args.out, exist_ok=True)
+    targets = [r for r in cfg["repos"] if r.get("enabled", True)]
+    if args.repo:
+        targets = [find_repo(cfg, args.repo)]
+    summary = {"started_at": now_iso(), "config": args.config, "out": os.path.abspath(args.out), "repos": []}
+    for r in targets:
+        cs = collect_repo(cfg, r, no_fetch=args.no_fetch)
+        fname = "%s__%s.json" % (r["domain"], r["repo"])
+        fpath = os.path.join(args.out, fname)
+        with io.open(fpath, "w", encoding="utf-8") as f:
+            json.dump(cs, f, ensure_ascii=False, indent=2)
+        summary["repos"].append({
+            "repo": repo_key(r), "status": cs["status"], "commit_count": cs["commit_count"],
+            "subsystems": sorted(cs["subsystems"].keys()), "structural": len(cs["structural"]),
+            "unmapped": len(cs["unmapped"]), "changeset": fname,
+            "error": cs["error"],
+        })
+    summary["finished_at"] = now_iso()
+    with io.open(os.path.join(args.out, "_run.json"), "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def cmd_materialize(args):
+    cfg = load_config(args.config)
+    r = find_repo(cfg, args.repo)
+    src = source_path(cfg, r)
+    wt = worktree_path(cfg, r)
+    sha = args.sha or remote_tip_no_fetch(src, r["branch"])
+    if not sha:
+        sha = fetch_head(src, r["branch"])
+    if os.path.isdir(wt) and os.path.exists(os.path.join(wt, ".git")):
+        rc, _ = run_git(wt, ["rev-parse", "--is-inside-work-tree"], check=False)
+        if rc == 0:
+            run_git(wt, ["checkout", "--detach", sha], timeout=FETCH_TIMEOUT)
+            print(json.dumps({"worktree": wt, "sha": sha, "action": "updated"}, ensure_ascii=False))
+            return
+        raise SystemExit("path exists but is not a usable worktree: %s (remove it manually)" % wt)
+    if os.path.isdir(wt) and os.listdir(wt):
+        raise SystemExit("path exists and is not empty, refusing: %s" % wt)
+    os.makedirs(os.path.dirname(wt), exist_ok=True)
+    run_git(src, ["worktree", "prune"], check=False)
+    run_git(src, ["worktree", "add", "--detach", wt, sha], timeout=FETCH_TIMEOUT)
+    print(json.dumps({"worktree": wt, "sha": sha, "action": "created"}, ensure_ascii=False))
+
+
+def cmd_advance(args):
+    cfg = load_config(args.config)
+    r = find_repo(cfg, args.repo)
+    old = r.get("last_synced_sha")
+    r["last_synced_sha"] = args.sha
+    r["last_synced_at"] = now_iso()
+    save_config(args.config, cfg)
+    print(json.dumps({"repo": args.repo, "from": old, "to": args.sha}, ensure_ascii=False))
+
+
+def cmd_status(args):
+    cfg = load_config(args.config)
+    rows = [{"repo": repo_key(r), "branch": r["branch"], "enabled": r.get("enabled", True),
+             "last_synced_sha": r.get("last_synced_sha"), "last_synced_at": r.get("last_synced_at")}
+            for r in cfg["repos"]]
+    print(json.dumps({"config": args.config, "repos": rows}, ensure_ascii=False, indent=2))
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="wiki_sync")
+    ap.add_argument("--config", default=DEFAULT_CONFIG)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("init", help="fill null baselines with current origin/<branch> HEAD")
+    p.add_argument("--force", action="store_true", help="re-baseline ALL repos (discards pending ranges)")
+    p.set_defaults(fn=cmd_init)
+
+    p = sub.add_parser("collect", help="fetch + one-shot range diff -> changeset JSON per repo")
+    p.add_argument("--out", required=True)
+    p.add_argument("--repo", help="domain/repo — limit to one repo")
+    p.add_argument("--no-fetch", action="store_true", help="use existing remote-tracking refs")
+    p.set_defaults(fn=cmd_collect)
+
+    p = sub.add_parser("materialize", help="ensure persistent detached worktree for a repo")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--sha")
+    p.set_defaults(fn=cmd_materialize)
+
+    p = sub.add_parser("advance", help="record last_synced_sha AFTER the wiki commit succeeded")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--sha", required=True)
+    p.set_defaults(fn=cmd_advance)
+
+    p = sub.add_parser("status", help="print per-repo sync state")
+    p.set_defaults(fn=cmd_status)
+
+    args = ap.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()
