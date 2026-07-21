@@ -7,6 +7,8 @@ Subcommands (always run with `python -X utf8`):
   init        Ensure D:\\wiki\\.wiki-sync.json exists and every enabled repo has a
               baseline last_synced_sha (= current origin/<branch> HEAD). Never
               overwrites an existing non-null baseline unless --force.
+  configure   Explicitly set one repo's branch and historical baseline, after
+              fetching the branch and verifying the baseline is an ancestor.
   collect     For each enabled repo: fetch origin/<branch>, range-diff
               last_synced_sha..origin/<branch> in ONE shot, map changed files to
               wiki subsystems via <WIKI_BASE>/<domain>/<repo>/.progress.json,
@@ -14,8 +16,10 @@ Subcommands (always run with `python -X utf8`):
               per repo plus a _run.json summary. Read-only w.r.t. source repos
               (fetch only; never touches the working tree).
   materialize Ensure the persistent linked worktree <sync_root>/<domain>/<repo>
-              exists and is detached at the given SHA (defaults to the repo's
-              fetched origin/<branch>). Never modifies the D:\\code checkout.
+              exists and is detached at the given SHA from `collect`. It never
+              fetches and never modifies the D:\\code working-tree contents.
+  carry-over  Persist an incomplete repo range in the config. The next collect
+              exposes and prioritizes it; advance clears it after a full commit.
   advance     Set a repo's last_synced_sha in the config (call ONLY after the
               wiki commit for that repo succeeded).
   status      Print per-repo state (baseline, branch, enabled).
@@ -29,6 +33,7 @@ import fnmatch
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -94,6 +99,40 @@ def save_config(path, cfg):
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
+
+
+def load_carry_over_state(path):
+    """Load and validate a UTF-8 JSON carry-over state file."""
+    with io.open(path, encoding="utf-8-sig") as f:
+        state = json.load(f)
+    if not isinstance(state, dict):
+        raise SystemExit("carry-over state must be a JSON object")
+    required = ("from_sha", "reason", "remaining_subsystems")
+    missing = [key for key in required if key not in state]
+    if missing:
+        raise SystemExit("carry-over state missing: %s" % ", ".join(missing))
+    for key in ("from_sha", "reason"):
+        if not isinstance(state[key], str) or not state[key].strip():
+            raise SystemExit("carry-over %s must be a non-empty string" % key)
+    to_sha = state.get("to_sha")
+    if to_sha is not None and (not isinstance(to_sha, str) or not to_sha.strip()):
+        raise SystemExit("carry-over to_sha must be null or a non-empty string")
+    remaining = state["remaining_subsystems"]
+    if not isinstance(remaining, list) or not all(
+            isinstance(name, str) and name.strip() for name in remaining):
+        raise SystemExit("carry-over remaining_subsystems must be a string array")
+    normalized = {
+        "from_sha": state["from_sha"].strip(),
+        "to_sha": to_sha.strip() if to_sha is not None else None,
+        "reason": state["reason"].strip(),
+        "remaining_subsystems": list(dict.fromkeys(name.strip() for name in remaining)),
+        "recorded_at": now_iso(),
+    }
+    if "detail" in state:
+        if not isinstance(state["detail"], str):
+            raise SystemExit("carry-over detail must be a string")
+        normalized["detail"] = state["detail"]
+    return normalized
 
 
 def repo_key(r):
@@ -178,6 +217,7 @@ def collect_repo(cfg, r, no_fetch=False):
         "status": None, "history_rewritten": False, "commit_count": 0,
         "messages": [], "doc_mode": None, "subsystems": {}, "unmapped": [],
         "noise_count": 0, "noise_sample": [], "structural": [], "error": None,
+        "carried_over": r.get("carried_over"), "carry_over_range_grew": False,
         "collected_at": now_iso(),
     }
     try:
@@ -191,6 +231,13 @@ def collect_repo(cfg, r, no_fetch=False):
             new = fetch_head(src, r["branch"])
         cs["to_sha"] = new
         last = r.get("last_synced_sha")
+        carried_over = r.get("carried_over")
+        if carried_over and carried_over.get("from_sha") != last:
+            raise RuntimeError("carried_over.from_sha does not match last_synced_sha")
+        if carried_over:
+            previous_to_sha = carried_over.get("to_sha")
+            cs["carry_over_range_grew"] = (
+                None if previous_to_sha is None else previous_to_sha != new)
         if not last:
             cs["status"] = "needs_baseline"
             return cs
@@ -298,6 +345,7 @@ def cmd_init(args):
             sha = fetch_head(source_path(cfg, r), r["branch"])
             r["last_synced_sha"] = sha
             r["baselined_at"] = now_iso()
+            r.pop("carried_over", None)
             changed += 1
             results.append({"repo": key, "status": "baselined", "sha": sha})
         except Exception as e:
@@ -308,13 +356,63 @@ def cmd_init(args):
                      ensure_ascii=False, indent=2))
 
 
+def cmd_configure(args):
+    """Set one repo's branch and historical baseline as one explicit operation."""
+    cfg = load_config(args.config)
+    r = find_repo(cfg, args.repo)
+    branch = args.branch.strip()
+    baseline_arg = args.baseline.strip()
+    if not branch:
+        raise SystemExit("configure branch must be non-empty")
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", baseline_arg):
+        raise SystemExit("configure baseline must be a 7-40 character commit SHA")
+
+    src = source_path(cfg, r)
+    if not os.path.isdir(os.path.join(src, ".git")):
+        raise SystemExit("source repo missing or not a git repo: %s" % src)
+
+    target = fetch_head(src, branch)
+    _, baseline_out = run_git(src, ["rev-parse", "--verify", baseline_arg + "^{commit}"])
+    baseline = baseline_out.strip()
+    rc, _ = run_git(src, ["merge-base", "--is-ancestor", baseline, target], check=False)
+    if rc != 0:
+        raise SystemExit(
+            "baseline %s is not an ancestor of origin/%s at %s" %
+            (baseline, branch, target))
+
+    old = {
+        "branch": r.get("branch"),
+        "last_synced_sha": r.get("last_synced_sha"),
+        "carried_over": bool(r.get("carried_over")),
+        "last_synced_at": r.get("last_synced_at"),
+    }
+    r["branch"] = branch
+    r["last_synced_sha"] = baseline
+    r["baselined_at"] = now_iso()
+    r.pop("carried_over", None)
+    r.pop("last_synced_at", None)
+    save_config(args.config, cfg)
+    print(json.dumps({
+        "config": args.config,
+        "repo": args.repo,
+        "branch": branch,
+        "baseline": baseline,
+        "target": target,
+        "old": old,
+        "cleared_carry_over": old["carried_over"],
+    }, ensure_ascii=False, indent=2))
+
+
 def cmd_collect(args):
     cfg = load_config(args.config)
     os.makedirs(args.out, exist_ok=True)
     targets = [r for r in cfg["repos"] if r.get("enabled", True)]
     if args.repo:
         targets = [find_repo(cfg, args.repo)]
-    summary = {"started_at": now_iso(), "config": args.config, "out": os.path.abspath(args.out), "repos": []}
+    else:
+        targets.sort(key=lambda r: 0 if r.get("carried_over") else 1)
+    summary = {"started_at": now_iso(), "config": args.config,
+               "out": os.path.abspath(args.out), "repos": []}
     for r in targets:
         cs = collect_repo(cfg, r, no_fetch=args.no_fetch)
         fname = "%s__%s.json" % (r["domain"], r["repo"])
@@ -325,6 +423,8 @@ def cmd_collect(args):
             "repo": repo_key(r), "status": cs["status"], "commit_count": cs["commit_count"],
             "subsystems": sorted(cs["subsystems"].keys()), "structural": len(cs["structural"]),
             "unmapped": len(cs["unmapped"]), "changeset": fname,
+            "carried_over": bool(cs["carried_over"]),
+            "carry_over_range_grew": cs["carry_over_range_grew"],
             "error": cs["error"],
         })
     summary["finished_at"] = now_iso()
@@ -338,9 +438,7 @@ def cmd_materialize(args):
     r = find_repo(cfg, args.repo)
     src = source_path(cfg, r)
     wt = worktree_path(cfg, r)
-    sha = args.sha or remote_tip_no_fetch(src, r["branch"])
-    if not sha:
-        sha = fetch_head(src, r["branch"])
+    sha = args.sha
     if os.path.isdir(wt) and os.path.exists(os.path.join(wt, ".git")):
         rc, _ = run_git(wt, ["rev-parse", "--is-inside-work-tree"], check=False)
         if rc == 0:
@@ -356,21 +454,42 @@ def cmd_materialize(args):
     print(json.dumps({"worktree": wt, "sha": sha, "action": "created"}, ensure_ascii=False))
 
 
+def cmd_carry_over(args):
+    cfg = load_config(args.config)
+    r = find_repo(cfg, args.repo)
+    state = load_carry_over_state(args.state)
+    baseline = r.get("last_synced_sha")
+    if state["from_sha"] != baseline:
+        raise SystemExit(
+            "carry-over from_sha does not match last_synced_sha: %s" % baseline)
+    if state["to_sha"] is not None and state["to_sha"] == baseline:
+        raise SystemExit("carry-over to_sha must differ from last_synced_sha")
+    replaced = bool(r.get("carried_over"))
+    r["carried_over"] = state
+    save_config(args.config, cfg)
+    print(json.dumps({"repo": args.repo, "carried_over": state, "replaced": replaced},
+                     ensure_ascii=False, indent=2))
+
+
 def cmd_advance(args):
     cfg = load_config(args.config)
     r = find_repo(cfg, args.repo)
     old = r.get("last_synced_sha")
     r["last_synced_sha"] = args.sha
     r["last_synced_at"] = now_iso()
+    cleared = bool(r.pop("carried_over", None))
     save_config(args.config, cfg)
-    print(json.dumps({"repo": args.repo, "from": old, "to": args.sha}, ensure_ascii=False))
+    print(json.dumps({"repo": args.repo, "from": old, "to": args.sha,
+                      "carried_over_cleared": cleared}, ensure_ascii=False))
 
 
 def cmd_status(args):
     cfg = load_config(args.config)
     rows = [{"repo": repo_key(r), "branch": r["branch"], "enabled": r.get("enabled", True),
-             "last_synced_sha": r.get("last_synced_sha"), "last_synced_at": r.get("last_synced_at")}
+             "last_synced_sha": r.get("last_synced_sha"), "last_synced_at": r.get("last_synced_at"),
+             "carried_over": r.get("carried_over")}
             for r in cfg["repos"]]
+    rows.sort(key=lambda row: 0 if row["carried_over"] else 1)
     print(json.dumps({"config": args.config, "repos": rows}, ensure_ascii=False, indent=2))
 
 
@@ -383,6 +502,12 @@ def main():
     p.add_argument("--force", action="store_true", help="re-baseline ALL repos (discards pending ranges)")
     p.set_defaults(fn=cmd_init)
 
+    p = sub.add_parser("configure", help="set one repo's branch and historical baseline")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--branch", required=True)
+    p.add_argument("--baseline", required=True, help="historical commit SHA (7-40 hex characters)")
+    p.set_defaults(fn=cmd_configure)
+
     p = sub.add_parser("collect", help="fetch + one-shot range diff -> changeset JSON per repo")
     p.add_argument("--out", required=True)
     p.add_argument("--repo", help="domain/repo — limit to one repo")
@@ -391,8 +516,13 @@ def main():
 
     p = sub.add_parser("materialize", help="ensure persistent detached worktree for a repo")
     p.add_argument("--repo", required=True)
-    p.add_argument("--sha")
+    p.add_argument("--sha", required=True, help="exact to_sha emitted by collect")
     p.set_defaults(fn=cmd_materialize)
+
+    p = sub.add_parser("carry-over", help="persist an incomplete repo range from a JSON state file")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--state", required=True, help="UTF-8 JSON state file")
+    p.set_defaults(fn=cmd_carry_over)
 
     p = sub.add_parser("advance", help="record last_synced_sha AFTER the wiki commit succeeded")
     p.add_argument("--repo", required=True)
