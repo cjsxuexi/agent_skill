@@ -22,6 +22,7 @@ class CarryOverStateTests(unittest.TestCase):
         self.root = pathlib.Path(self.tmp.name)
         self.config = self.root / "config.json"
         self.state = self.root / "state.json"
+        self.changeset = self.root / "changeset.json"
         self._write_json(self.config, {
             "repos": [{
                 "domain": "domain",
@@ -88,6 +89,62 @@ class CarryOverStateTests(unittest.TestCase):
             config=str(self.config), repo="domain/repo", state=str(self.state)))
 
         self.assertIsNone(result["carried_over"]["to_sha"])
+
+    def test_complete_no_change_clears_carry_over(self):
+        self._set_carry_over()
+        self._write_changeset(status="no_change", to_sha="a" * 40)
+
+        result = self._run(wiki_sync.cmd_complete_no_change, argparse.Namespace(
+            config=str(self.config), repo="domain/repo", changeset=str(self.changeset)))
+
+        persisted = json.loads(self.config.read_text(encoding="utf-8"))["repos"][0]
+        self.assertNotIn("carried_over", persisted)
+        self.assertTrue(result["carried_over_cleared"])
+
+    def test_complete_no_change_rejects_non_final_status_and_retains_carry_over(self):
+        self._set_carry_over()
+        for status in ("changes", "error", "skipped_dirty"):
+            with self.subTest(status=status):
+                self._write_changeset(status=status, to_sha="a" * 40)
+                with self.assertRaises(SystemExit):
+                    wiki_sync.cmd_complete_no_change(argparse.Namespace(
+                        config=str(self.config), repo="domain/repo",
+                        changeset=str(self.changeset)))
+
+        persisted = json.loads(self.config.read_text(encoding="utf-8"))["repos"][0]
+        self.assertIn("carried_over", persisted)
+
+    def test_complete_no_change_rejects_mismatched_sha_and_retains_carry_over(self):
+        self._set_carry_over()
+        self._write_changeset(status="no_change", to_sha="b" * 40)
+
+        with self.assertRaises(SystemExit):
+            wiki_sync.cmd_complete_no_change(argparse.Namespace(
+                config=str(self.config), repo="domain/repo",
+                changeset=str(self.changeset)))
+
+        persisted = json.loads(self.config.read_text(encoding="utf-8"))["repos"][0]
+        self.assertIn("carried_over", persisted)
+
+    def _set_carry_over(self):
+        config = json.loads(self.config.read_text(encoding="utf-8"))
+        config["repos"][0]["carried_over"] = {
+            "from_sha": "a" * 40,
+            "to_sha": None,
+            "reason": "not_started_after_0730",
+            "remaining_subsystems": [],
+        }
+        self._write_json(self.config, config)
+
+    def _write_changeset(self, status, to_sha):
+        self._write_json(self.changeset, {
+            "domain": "domain",
+            "repo": "repo",
+            "branch": "release",
+            "from_sha": "a" * 40,
+            "to_sha": to_sha,
+            "status": status,
+        })
 
 
 class ConfigureTests(unittest.TestCase):

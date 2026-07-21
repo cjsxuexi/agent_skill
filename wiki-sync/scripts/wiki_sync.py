@@ -20,6 +20,9 @@ Subcommands (always run with `python -X utf8`):
               fetches and never modifies the D:\\code working-tree contents.
   carry-over  Persist an incomplete repo range in the config. The next collect
               exposes and prioritizes it; advance clears it after a full commit.
+  complete-no-change
+              Clear carry-over after a collected changeset proves the repo is
+              still exactly at its baseline.
   advance     Set a repo's last_synced_sha in the config (call ONLY after the
               wiki commit for that repo succeeded).
   status      Print per-repo state (baseline, branch, enabled).
@@ -471,6 +474,39 @@ def cmd_carry_over(args):
                      ensure_ascii=False, indent=2))
 
 
+def cmd_complete_no_change(args):
+    """Clear carry-over only from a validated no-change collection result."""
+    cfg = load_config(args.config)
+    r = find_repo(cfg, args.repo)
+    with io.open(args.changeset, encoding="utf-8-sig") as f:
+        changeset = json.load(f)
+    if not isinstance(changeset, dict):
+        raise SystemExit("changeset must be a JSON object")
+
+    changeset_repo = "%s/%s" % (changeset.get("domain"), changeset.get("repo"))
+    if changeset_repo != args.repo:
+        raise SystemExit("changeset repo does not match requested repo: %s" % changeset_repo)
+    if changeset.get("branch") != r.get("branch"):
+        raise SystemExit("changeset branch does not match configured branch: %s" % r.get("branch"))
+    if changeset.get("status") != "no_change":
+        raise SystemExit("carry-over can only be completed from a no_change changeset")
+
+    baseline = r.get("last_synced_sha")
+    if not baseline:
+        raise SystemExit("cannot complete carry-over without last_synced_sha")
+    if changeset.get("from_sha") != baseline or changeset.get("to_sha") != baseline:
+        raise SystemExit("no_change changeset SHA does not match last_synced_sha: %s" % baseline)
+
+    carried_over = r.get("carried_over")
+    if carried_over and carried_over.get("from_sha") != baseline:
+        raise SystemExit("carried_over.from_sha does not match last_synced_sha")
+    cleared = bool(r.pop("carried_over", None))
+    if cleared:
+        save_config(args.config, cfg)
+    print(json.dumps({"repo": args.repo, "status": "no_change",
+                      "carried_over_cleared": cleared}, ensure_ascii=False))
+
+
 def cmd_advance(args):
     cfg = load_config(args.config)
     r = find_repo(cfg, args.repo)
@@ -523,6 +559,12 @@ def main():
     p.add_argument("--repo", required=True)
     p.add_argument("--state", required=True, help="UTF-8 JSON state file")
     p.set_defaults(fn=cmd_carry_over)
+
+    p = sub.add_parser("complete-no-change",
+                       help="clear carry-over from a validated no_change changeset")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--changeset", required=True, help="changeset JSON emitted by collect")
+    p.set_defaults(fn=cmd_complete_no_change)
 
     p = sub.add_parser("advance", help="record last_synced_sha AFTER the wiki commit succeeded")
     p.add_argument("--repo", required=True)

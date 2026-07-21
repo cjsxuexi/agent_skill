@@ -61,6 +61,10 @@ The persistent source snapshot and the per-run manifest are different artifacts:
   by the run flow to persist an incomplete/unstarted repo. The UTF-8 JSON state file carries
   `from_sha`, `reason`, and `remaining_subsystems`; `to_sha` is optional/null before that repo is
   fetched, and `detail` is optional.
+- `python -X utf8 <SYNC_PY> complete-no-change --repo <domain/repo> --changeset <file>` — internal
+  command used after the repo loop. It clears stale carry-over only when the collected changeset
+  belongs to the configured repo/branch, has `status: no_change`, and both SHAs equal the current
+  `last_synced_sha`.
 
 ## Hard Constraints
 
@@ -91,7 +95,8 @@ The persistent source snapshot and the per-run manifest are different artifacts:
   timeout. Do not roll back wiki content already applied by a started repo because of the clock.
 - After the current repo finishes, a scheduled run persists every unstarted enabled repo as `carried_over` with
   `reason: "not_started_after_0730"`, its current `last_synced_sha` as `from_sha`, `to_sha: null`,
-  and an empty `remaining_subsystems` list. Commit the config-only state once, then post the report.
+  and an empty `remaining_subsystems` list. Defer the config-only commit until post-loop state
+  reconciliation, then post the report.
 - There is no fixed 10:00 completion guarantee under this policy: report time is current-repo finish
   time plus state/report overhead. Record total elapsed time for every repo so a human can decide
   whether to change the queue, start time, or repository scope.
@@ -160,7 +165,10 @@ c. **Start timer + collect**: record `<repo_started_at>` immediately before:
    ```
 
    Read that repo changeset. `no_change` / `needs_baseline` / `error` are final row statuses for
-   tonight; record finish time and continue. Fetch happens only here (or during explicit `init`).
+   tonight; record finish time and continue. If a `no_change` changeset reports prior carry-over,
+   add it to the post-loop completion list; do not mutate the config yet. Fetch happens only here
+   (or during explicit `init`). Dirty/error repos never enter the completion list and retain their
+   carry-over.
 d. **Materialize**: `python -X utf8 <SYNC_PY> materialize --repo <domain/repo> --sha <to_sha>`.
    First use creates the detached worktree via `worktree prune/add`; later runs switch that sync
    worktree with `checkout --detach`. `materialize` never performs another fetch.
@@ -181,10 +189,20 @@ f. **Commit + advance** - only when the refine report is `ok`:
 g. **Stop timer**: record `<repo_finished_at>` and elapsed seconds after the final repo status is
    known. The elapsed value includes fetch, materialize, refine, lint, state update, and commit.
 
-After the loop, if new carry-over states were written in scheduled mode, commit `.wiki-sync.json`
-once with `docs(sync): carry over unstarted repos <YYYY-MM-DD>`. Include that state commit in the
-report. Manual mode never creates this config-only commit. After the report, remove `<RUN_DIR>`;
-if removal fails, include the path and cleanup error in the report without rerunning collection.
+After the loop, reconcile state. For each carried-over repo whose current changeset was queued as
+`no_change`, run:
+
+```
+python -X utf8 <SYNC_PY> complete-no-change --repo <domain/repo> --changeset <changeset>
+```
+
+The command must reject any repo/branch/status/SHA mismatch; report that repo as `error` and retain
+its carry-over. If any no-change carry-over was removed or any unstarted carry-over was added in
+scheduled mode, commit `.wiki-sync.json` once with `docs(sync): reconcile carry over <YYYY-MM-DD>`.
+Include that state commit in the report. A manual one-repo run may clear carry-over proven complete
+by its own no-change changeset and uses the same config-only commit; it never creates carry-over for
+other repos. After the report, remove `<RUN_DIR>`; if removal fails, include the path and cleanup
+error in the report without rerunning collection.
 
 **4. Report**
 
