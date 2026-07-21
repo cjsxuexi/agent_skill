@@ -72,6 +72,7 @@ These bastion hosts are already provisioned. Use the fixed path below; do NOT re
 | Host (prompt) | Step 1 launch command |
 |---|---|
 | `fabu@fabubak02` | `~/nb_port_prodprev/scripts/cmdcap shell` |
+| `fabu@fabu01` | `~/tools/cmdcap shell` |
 | `fabu@fabu02` | `~/tools/cmdcap shell` |
 | `fabu@fabu04` | `~/tools/cmdcap shell` |
 
