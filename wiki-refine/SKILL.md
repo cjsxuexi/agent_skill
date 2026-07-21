@@ -420,6 +420,10 @@ read-source boundary).
   serially. `<TOPIC>` = that subsystem's diff summary (file list + adds/dels) + the aggregated commit
   messages; `<USER_SUPPLEMENT>` is empty. When diff evidence and a commit message disagree, the diff
   wins (message quality is uneven).
+- **No timeout in nightly auto mode**: once the caller starts a repo before its 07:30 start gate,
+  process every subsystem round serially and run lint to completion. Do not inspect the wall clock
+  between subsystem rounds and do not impose a repo/subsystem hard timeout. If a later error occurs,
+  preserve engine-applied wiki changes for human review; never roll them back automatically.
 - 2.4 gate → **auto-accept**: the engine dry-run → apply already validated the transaction; record the
   txn summary for the report instead of prompting.
 - 2.4.b escalation gate → **auto-reject**: never expand read scope in auto mode. Keep the applied part;
