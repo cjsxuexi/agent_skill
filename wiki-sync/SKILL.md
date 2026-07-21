@@ -1,6 +1,6 @@
 ---
 name: wiki-sync
-description: Use when a "wiki nightly sync" autopilot issue fires, when the user types /wiki-sync (run|configure|init|status), or when asked to sync the wiki with release-branch code changes / 夜间 wiki 同步 / 根据代码变更更新 wiki. Orchestrates scheduled and manual pipelines that fetch each configured repo's release-line tip once per collection, computes one-shot range diffs, and drives /wiki-refine --auto to update the D:\wiki 体系, committing the wiki per repo and reporting pending human decisions.
+description: Slash command /wiki-sync. Keeps the document-systems wiki 体系 in sync with release-line code changes; repos and per-repo release-line branches are configured in .wiki-sync.json. Trigger ONLY in two cases — a "wiki nightly sync" Multica autopilot issue fires, or the user explicitly types /wiki-sync（可不带子命令，或 run|configure|init|status）. Do not infer this skill from any natural-language request.
 ---
 
 # wiki-sync
