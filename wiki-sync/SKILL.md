@@ -9,6 +9,7 @@ Scheduled and manual automation that keeps the `/document-systems` wiki 体系 i
 release-line code changes. Design agreed in LOC-147: one-shot range diff per repo (never per-commit), auto-accepted
 subsystem edits via engine-validated `/wiki-refine --auto`, root/公共化 decisions deferred to a
 human via the daily issue, persistent worktrees under `D:\code_sync`, per-repo wiki commits.
+All wiki commits are pushed once, at the end of the run, after post-loop state reconciliation.
 
 Three layers:
 
@@ -79,6 +80,9 @@ The persistent source snapshot and the per-run manifest are different artifacts:
   ordering — the commit includes the config change, so reverting the commit also rolls back the
   pointer and the next night reprocesses the range). `configure` is the explicit exception: it is
   a user-approved branch/baseline reset and must be reviewed as a separate config change.
+- Push exactly once after the repo loop and post-loop state reconciliation have both finished.
+  NEVER push from inside the per-repo loop. A push failure preserves all local commits and is
+  reported; it does not roll back commits or `last_synced_sha`.
 - Scheduled runs post one issue comment as the report. Manual runs return the report in the current
   session; if a manual run is attached to a Multica issue, post the one issue comment instead. No
   progress comments.
@@ -204,17 +208,31 @@ by its own no-change changeset and uses the same config-only commit; it never cr
 other repos. After the report, remove `<RUN_DIR>`; if removal fails, include the path and cleanup
 error in the report without rerunning collection.
 
-**4. Report**
+**4. Push after all processing is complete**
 
-For scheduled mode, post ONE issue comment immediately after the current repo finishes and
-unstarted state is persisted (`--content-file`, per platform rules). For manual mode, return the
-same report in the current session; if the caller supplied a Multica issue context, post that one
-comment instead. There is no report deadline independent of current-repo completion:
+After the repo loop and all post-loop state reconciliation/commits have finished, run exactly once:
+
+```
+git -C <wiki_base> push
+```
+
+Do not push individual repo commits as they are created. If the final push fails, preserve the
+local commits, record the concise Git error, continue to the report, and do not automatically
+rewrite, reset, or roll back any commit.
+
+**5. Report**
+
+For scheduled mode, post ONE issue comment after the current repo finishes, unstarted state is
+persisted, and the final push has been attempted (`--content-file`, per platform rules). For manual
+mode, return the same report in the current session; if the caller supplied a Multica issue context,
+post that one comment instead. There is no report deadline independent of current-repo completion:
 
 ```markdown
 ## wiki 夜间同步报告 <YYYY-MM-DD>
 
 执行窗口：<run_started_at> -> <run_finished_at>（总耗时 <duration>）
+
+Git push: success / failed (<concise error>)
 
 | 仓 | 范围 | commits | 子系统 | 更新文档 | §10 | 耗时 | 状态 |
 |---|---|---|---|---|---|---|---|
@@ -251,6 +269,7 @@ or revert a single repo's night.
 | manual `/wiki-sync run --repo ...` after 07:30 | Run the selected repo immediately; never create carry-over for this manual request |
 | current repo crosses 07:30 | Continue every subsystem and commit to completion; no timeout and no rollback |
 | refine error after valid edits | Preserve the wiki diff for human review; no advance and no automatic rollback |
+| final `git push` fails | Preserve all local commits; report the concise Git error; do not rewrite, reset, or roll back commits |
 
 ## What this skill does NOT do
 
